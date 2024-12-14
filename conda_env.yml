@@ -1,0 +1,14 @@
+name: scimine_env
+channels:
+  - defaults
+dependencies:
+  - python=3.8
+  - pandas
+  - scikit-learn 
+  - pytorch
+  - seaborn
+  - nltk
+  - requests
+  - beautifulsoup4
+  - pip:
+      - transformers==4.2.0
