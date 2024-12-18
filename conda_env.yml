@@ -12,3 +12,4 @@ dependencies:
   - beautifulsoup4
   - pip:
       - transformers==4.2.0
+      - synergy_dataset
