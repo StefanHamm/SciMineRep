@@ -102,7 +102,7 @@ def preprocess_data(key,method,label):
     Parameters
     ----------
     key: either a doi,pmid or openalex_id
-    method: the method used to get the key
+    method: the key type
 
     Returns
     -------
