@@ -18,11 +18,11 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 # Set up dataset path
-cwd = os.getcwd()
-#cwd = os.path.dirname(os.path.realpath(__file__))
+#cwd = os.getcwd()
+cwd = os.path.dirname(os.path.realpath(__file__))
 print(cwd)
 os.chdir(cwd)
-datasetPath = "./data/datasets"
+datasetPath = "./../../data/datasets"
 
 # Fetches metadata from PubMed using PMID
 def get_pubmed_metadata(pmid):
@@ -93,7 +93,7 @@ def clone_dataset_repo():
         r"datasets/Kwok_2020/Kwok_2020_ids.csv",
         r"datasets/Bannach-Brown_2019/Bannach-Brown_2019_ids.csv"
     ]
-    repodir = "./data/synergy-dataset"
+    repodir = "./../../data/synergy-dataset"
     
     if os.path.exists(datasetPath):
         logger.info("Datasets IDs files already exist. Not downloading again.")
