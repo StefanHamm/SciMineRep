@@ -67,17 +67,17 @@ def get_openalex_metadata(openalex_id):
 def preprocess_data(paper):
     title, abstract = None, None
     
-    # Try PMID
-    if pd.notna(paper.get("pmid")):
-        title, abstract = get_pubmed_metadata(paper["pmid"])
+    # Try DOI
+    if pd.notna(paper.get("doi")):
+        title, abstract = get_crossref_metadata(paper["doi"][16:])
     
-    # If PMID doesn't exist or no data was found, try DOI
-    if title is None and pd.notna(paper.get("doi")):
-        title, abstract = get_crossref_metadata(paper["doi"])
+    # If DOI doesn't exist or no data was found, try PMID
+    if ((title is None) or (title=='No title available')) and pd.notna(paper.get("pmid")):
+        title, abstract = get_pubmed_metadata(paper["pmid"][-8:])
 
     # If DOI also doesn't exist or no data was found, try OpenAlexID
-    if title is None and pd.notna(paper.get("openalex_id")):
-        title, abstract = get_openalex_metadata(paper["openalex_id"])
+    if ((title is None) or (title=='No title available')) and pd.notna(paper.get("openalex_id")):
+        title, abstract = get_openalex_metadata(paper["openalex_id"][21:])
     
     # Return a dictionary if metadata was found
     if title and abstract:
