@@ -66,12 +66,13 @@ async def fetch(service, session, url, semaphores):
                 elif response.status == 429:
                     logger.error(f"Rate limit exceeded for {service} service reached")
                     logger.error(f"Try again after a few seconds but please change the rate limit")
-                    return None
+                    exit()
                 else:
                     logger.error(f"Error {response.status} for URL: {url}")
                     return None
         except Exception as e:
             logger.error(f"Request failed in fetch(): {e}, for url {url}")
+            exit()
             return None
 
 # Fetches metadata from PubMed using PMID
@@ -85,9 +86,24 @@ async def get_pubmed_metadata(session, pmid, semaphores):
         if article is None:
             logger.warning(f"No data found for PMID: {pmid} with URL: {url}")
             return None, None
-        title = article.find(".//ArticleTitle").text 
-        abstract = article.find(".//AbstractText").text 
+        
+        artcicle_title = article.find(".//ArticleTitle")
+        article_abstract = article.find(".//AbstractText")
+        
+        if artcicle_title is None:
+            title = "No title available"
+            logger.warning(f"No title found for PMID: {pmid} with URL: {url}")
+        else:
+            title = artcicle_title.text
+        
+        if article_abstract is None:
+            abstract = "No abstract available"
+            logger.warning(f"No abstract found for PMID: {pmid} with URL: {url}")
+        else:
+            abstract = article_abstract.text
+     
         return title, abstract
+        
     else:
         return None, None
 
@@ -122,7 +138,7 @@ async def preprocess_data(session, paper, semaphores):
     # Try DOI via CrossRef
     if pd.notna(paper.get("doi")):
         title_cr, abstract_cr = await get_crossref_metadata(
-            session, paper["doi"][16:], semaphores
+            session, paper["doi"], semaphores
         )
         if title_cr:
             title = title_cr
@@ -195,7 +211,7 @@ async def process_file(filename, semaphores):
 
     outputDF = pd.DataFrame(columns=["title", "abstract", "label"])
     logger.info(f"Processing {filename}")
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(force_close=True)) as session:
+    async with aiohttp.ClientSession() as session:
         tasks = [
             preprocess_data(session, paper, semaphores)
             for _, paper in df.iterrows()
