@@ -66,21 +66,20 @@ async def fetch(service, session, url, semaphores):
                 elif response.status == 429:
                     logger.error(f"Rate limit exceeded for {service} service reached")
                     logger.error(f"Try again after a few seconds but please change the rate limit")
-                    return None
+                    exit()
                 else:
                     logger.error(f"Error {response.status} for URL: {url}")
                     return None
         except Exception as e:
             logger.error(f"Request failed in fetch(): {e}, for url {url}")
+            exit()
             return None
 
 # Fetches metadata from PubMed using PMID
 async def get_pubmed_metadata(session, pmid, semaphores):
-    abstract_url=f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=text&rettype=abstract"
-    article_abstract = await fetch("eutils", session, abstract_url, semaphores)
     url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&retmode=xml"
     text = await fetch("eutils", session, url, semaphores)
-    if text and article_abstract:
+    if text:
         from xml.etree import ElementTree as ET
         root = ET.fromstring(text)
         article = root.find(".//PubmedArticle")
@@ -89,6 +88,7 @@ async def get_pubmed_metadata(session, pmid, semaphores):
             return None, None
         
         artcicle_title = article.find(".//ArticleTitle")
+        article_abstract = article.find(".//AbstractText")
         
         if artcicle_title is None:
             title = "No title available"
@@ -100,8 +100,8 @@ async def get_pubmed_metadata(session, pmid, semaphores):
             abstract = "No abstract available"
             logger.warning(f"No abstract found for PMID: {pmid} with URL: {url}")
         else:
-            abstract = article_abstract
-
+            abstract = article_abstract.text
+     
         return title, abstract
         
     else:
@@ -218,48 +218,46 @@ async def process_file(filename, semaphores):
             if pd.notna(paper.get("label_included"))
         ]
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Task failed with exception: {result}")
-            elif result:
-                outputDF = pd.concat([outputDF, pd.DataFrame([result])], ignore_index=True)
+        results = await tqdm_async.gather(*tasks, desc=f"Processing {filename}")
+        await session.close()
+    logger.info(f"Finished processing {filename}")
+    for result in results:
+        if result:
+            outputDF = pd.concat([outputDF, pd.DataFrame([result])], ignore_index=True)
 
-    logger.info(f"Number of processed rows: {len(outputDF)}")
-
-    if len(outputDF) > 0:
-        os.makedirs(processedDataPath, exist_ok=True)
-        outputPathCSV = os.path.join(processedDataPath, f"{filename}_processed.csv")
-        outputPathPickle = os.path.join(processedDataPath, f"{filename}_processed.pkl")
-        logger.info(f"Saving CSV to: {outputPathCSV}")
-        logger.info(f"Saving pickle to: {outputPathPickle}")
-        try:
-            outputDF.to_csv(outputPathCSV, index=False)
-            outputDF.to_pickle(outputPathPickle)
-            logger.info(f"Files saved successfully for {filename}")
-        except Exception as e:
-            logger.error(f"Error saving files for {filename}: {e}")
-    else:
-        logger.warning(f"No data to save for {filename}")
-
+    outputPathCSV = os.path.join(processedDataPath, f"{filename}_processed.csv")
+    outputPathPickle = os.path.join(processedDataPath, f"{filename}_processed.pkl")
+    outputDF.to_csv(outputPathCSV, index=False)
+    outputDF.to_pickle(outputPathPickle)
+    logger.info(f"Processed data saved to {filename}_processed.csv")
 
 # Process all files in the dataset path
 async def download_data():
+    #create the folder for the processed datasets
     os.makedirs(processedDataPath, exist_ok=True)
     for file in os.listdir(datasetPath):
         if file.endswith("_ids.csv"):
+            # Create a new event loop for each dataset
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # Create semaphores within the loop
+            semaphores = {
+                "openalex": asyncio.Semaphore(RATE_LIMITS["openalex"]["limit"]),
+                "eutils": asyncio.Semaphore(RATE_LIMITS["eutils"]["limit"]),
+                "crossref": asyncio.Semaphore(RATE_LIMITS["crossref"]["limit"]),
+            }
+
             try:
-                async with aiohttp.ClientSession() as session:
-                    semaphores = {
-                        "openalex": asyncio.Semaphore(RATE_LIMITS["openalex"]["limit"]),
-                        "eutils": asyncio.Semaphore(RATE_LIMITS["eutils"]["limit"]),
-                        "crossref": asyncio.Semaphore(RATE_LIMITS["crossref"]["limit"]),
-                    }
-                    await process_file(file, semaphores)
+                # Run the processing for the current dataset
+                logger.debug(f"Processing {file}")
+                await process_file(file, semaphores)
             except Exception as e:
                 logger.error(f"Error processing {file}: {e}")
 
 if __name__ == "__main__":
+    # Change this to display only info messages and so on
     console_handler.setLevel(logging.INFO)
     clone_dataset_repo()
+    #download_data()
     asyncio.run(download_data())
