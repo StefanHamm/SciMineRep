@@ -9,7 +9,7 @@ import os
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 class ReviewDataset(Dataset):
-    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',start_idx=0):
+    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
         self.tokenizer = AutoTokenizer.from_pretrained('allenai/specter')
@@ -35,6 +35,11 @@ class ReviewDataset(Dataset):
         self.return_embedding = return_embedding
         self.current_idx = start_idx
         
+        self.pseudo_train_labels = np.array([])
+        self.pseudo_train_embeddings_scibert = []
+        
+        self.use_pseudo_for_scibert = use_pseudo_for_scibert
+
         
         print(self.known_indices)
         print(self.unknown_indices)
@@ -99,15 +104,41 @@ class ReviewDataset(Dataset):
         self.unknown_labels = np.array(self.labels)[self.unknown_indices]
         self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
         
+    
+    def add_pseudo_labels(self, pseudo_labels):
+        """
+        Adds the selected document (using the index from unknown documents) to the
+        pseudo training set
+        """
         
+        #Add all papers to the pseudo train set
+        self.pseudo_train_labels = np.array([])
+        self.pseudo_train_embeddings_scibert = []
+        for i,label in enumerate(pseudo_labels):
+            
+            new_pseudo_train_label = label
+            new_pseudo_train_embedding_scibert = self.unknown_embeddings_scibert[i]
+            self.pseudo_train_labels = np.append(self.pseudo_train_labels, new_pseudo_train_label)
+            self.pseudo_train_embeddings_scibert.append(new_pseudo_train_embedding_scibert)
+    
     def __len__(self):
-        return len(self.train_embeddings)
+        if self.return_embedding == 'scibert' and self.use_pseudo_for_scibert:
+            return len(self.train_embeddings) + len(self.pseudo_train_embeddings)
+        else:
+            return len(self.train_embeddings)
 
     def __getitem__(self, idx):
         if self.return_embedding == 'specter':
            return self.train_embeddings[idx], self.train_labels[idx]
         elif self.return_embedding == 'scibert':
-           return self.train_embeddings_scibert[idx], self.train_labels[idx]
+            if self.use_pseudo_for_scibert:
+                if idx < len(self.train_embeddings_scibert):
+                    return self.train_embeddings_scibert[idx], self.train_labels[idx]
+                else:
+                    pseudo_idx = idx - len(self.train_embeddings_scibert)
+                    return self.pseudo_train_embeddings_scibert[pseudo_idx], self.pseudo_train_labels[pseudo_idx]
+            else:
+                return self.train_embeddings_scibert[idx], self.train_labels[idx]
         elif self.return_embedding == 'both':
             return self.train_embeddings[idx], self.train_embeddings_scibert[idx], self.train_labels[idx]
         
