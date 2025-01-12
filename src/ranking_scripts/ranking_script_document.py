@@ -1,172 +1,125 @@
 import torch
-from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
-from transformers import AutoTokenizer, AutoModel
-import pandas as pd
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from sklearn.metrics import roc_auc_score
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, log_loss
-
-def load_data(path):
-    data = pd.read_csv(path)
-    #texts are the columns title and abstract in a dataframe
-    texts = data[['title', 'abstract']]
-    texts = data['title'] + ' ' + data['abstract']
-    labels = data['label'].values
-    return texts, labels
-
-def get_specter_embeddings(texts):
-    tokenizer = AutoTokenizer.from_pretrained('allenai/specter')
-    model = AutoModel.from_pretrained('allenai/specter')
-    
-    title_abs = [d["title"] + tokenizer.sep_token + d["abstract"] for d in texts]
-    
-    inputs = tokenizer(title_abs, padding=True, truncation=True, return_tensors="pt",max_length=512)
-    with torch.no_grad():
-        result = model(**inputs)
-    embedding = result.last_hidden_state[:, 0, :]
-    return embedding.numpy()
-
-class VAE(nn.Module):
-    def __init__(self, input_dim, latent_dim, beta):
-        super(VAE, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 512)
-        self.fc2 = nn.Linear(512, latent_dim)
-        self.fc3 = nn.Linear(latent_dim, 512)
-        self.fc4 = nn.Linear(512, input_dim)
-        self.beta = beta
-        self.classifier = nn.Linear(latent_dim, 1)
-
-    def encode(self, x):
-        h = torch.relu(self.fc1(x))
-        mu = self.fc2(h)
-        log_var = self.fc2(h)
-        return mu, log_var
-
-    def reparameterize(self, mu, log_var):
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-
-    def decode(self, z):
-        h = torch.relu(self.fc3(z))
-        return self.fc4(h)
-
-    def forward(self, x):
-        mu, log_var = self.encode(x)
-        z = self.reparameterize(mu, log_var)
-        recon_x = self.decode(z)
-        y_pred = self.classifier(z)
-        return recon_x, mu, log_var, y_pred
-
-def loss_function(recon_x, x, mu, log_var, y_pred, y_true, beta):
-    reconstruction_loss = nn.MSELoss()(recon_x, x)
-    kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    classification_loss = nn.BCEWithLogitsLoss()(y_pred, y_true.unsqueeze(1))
-    return reconstruction_loss + beta * kl_divergence + classification_loss
+from dataloader import ReviewDataset
+from vae_model import VAE
+from utils import set_seed, set_device
+import os
+import random
+import math
+# path to where this file is located
+dir_path = os.path.dirname(os.path.realpath(__file__))
 
 def train_vae(model, dataloader, optimizer, epochs, device):
     model.train()
     for epoch in range(epochs):
         total_loss = 0
-        for batch in dataloader:
-            x = batch[0].to(device)
-            y = batch[1].to(device)
-            recon_x, mu, log_var, y_pred = model(x)
-            loss = loss_function(recon_x, x, mu, log_var, y_pred, y, model.beta)
+        for embeddings,labels in dataloader:
+            x = embeddings.to(device)
+            y = labels.to(device)
+           
+            ranking_score, recon_x, mu, log_var = model(x)
+            loss = model.loss_function(ranking_score, recon_x, x, mu, log_var, y, beta=0.1)
+            
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-        print(f'Epoch {epoch+1}, Loss: {total_loss/len(dataloader)}')
-        
-def evaluate(model, dataloader, device):
-    model.eval()
-    predictions = []
-    with torch.no_grad():
-        for batch in dataloader:
-            x = batch[0].to(device)
-            mu, _ = model.encode(x)
-            predictions.append(mu.cpu().numpy())
-    return np.concatenate(predictions)
+        #print(f'Epoch {epoch+1}, Loss: {total_loss/len(dataloader)}')
 
+def evaluate_vae(model, embeddings, device):
+     model.eval()
+     with torch.no_grad():
+          x = embeddings.to(device)
+          ranking_score, _,_,_ = model(x)
+          predictions = ranking_score.cpu().numpy().flatten()
+     return predictions
+     
 
-def train_and_rank(train_path, test_path):
-    # Load training data
-    train_texts, train_labels = load_data(train_path)
-    train_embeddings = get_specter_embeddings(train_texts)
-    
-    # Load test data
-    test_texts, test_labels = load_data(test_path)
-    test_embeddings = get_specter_embeddings(test_texts)
-    
-    # Define the VAE model
-    input_dim = train_embeddings.shape[1]
-    latent_dim = 128
-    beta = 0.1
-    vae = VAE(input_dim, latent_dim, beta)
-    
-    # Prepare DataLoader for training
-    train_dataset = TensorDataset(torch.tensor(train_embeddings, dtype=torch.float32), torch.tensor(train_labels, dtype=torch.float32))
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    
-    # Train the VAE
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    vae = vae.to(device)
-    optimizer = torch.optim.Adam(vae.parameters(), lr=1e-4)
-    train_vae(vae, train_loader, optimizer, epochs=200, device=device)
-    
-    # Get relevance scores for test set
-    vae.eval()
-    with torch.no_grad():
-        test_tensor = torch.tensor(test_embeddings, dtype=torch.float32).to(device)
-        _, _, _, y_pred = vae(test_tensor)
-        relevance_scores = y_pred.squeeze().cpu().numpy()
-    
-    # Create ranking based on relevance scores
-    test_indices = np.argsort(-relevance_scores)  # descending order
-    
-    # Return the ranking as indices
-    return test_indices
+def rank_papers(model, unknown_embeddings, device):
+    predictions = evaluate_vae(model, unknown_embeddings, device)
+    print(predictions)
+    indices = np.argsort(-predictions)
+    return indices
 
-def ranking_algorithm2(path):
-    texts, labels = load_data(path)
-    embeddings = get_specter_embeddings(texts)
-    X_train, X_test, y_train, y_test = train_test_split(embeddings, labels, test_size=0.2)
+def calculate_metrics(predictions, labels, threshold=0.5):
+    """
+    Calculates precision, recall, and f1-score for given predictions and labels.
+    """
+    predicted_labels = (predictions >= threshold).astype(int) #converting the ranking scores to binary values
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    input_dim = X_train.shape[1]
-    latent_dim = 128
-    beta = 0.1
-    vae = VAE(input_dim, latent_dim, beta).to(device)
+    true_positives = np.sum((predicted_labels == 1) & (labels == 1))
+    false_positives = np.sum((predicted_labels == 1) & (labels == 0))
+    false_negatives = np.sum((predicted_labels == 0) & (labels == 1))
+
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
     
-    train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32))
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     
-    optimizer = torch.optim.Adam(vae.parameters(), lr=1e-4)
-    train_vae(vae, train_loader, optimizer, epochs=200, device=device)
+    return precision, recall, f1_score
+
+def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     
-    latent_rep = evaluate(vae, DataLoader(TensorDataset(torch.tensor(X_test, dtype=torch.float32)), batch_size=32), device)
-    return latent_rep
+    #Calculate metrics for the training set
+    train_embeddings,train_labels = review_dataset.get_known_data()
+    train_predictions = evaluate_vae(model, train_embeddings, device)
+    train_precision, train_recall, train_f1 = calculate_metrics(train_predictions, train_labels, threshold)
+    print(f"Train Precision: {train_precision}, Recall: {train_recall}, F1-Score: {train_f1}")
+
+    #Calculate metrics for the unknown set
+    unknown_embeddings,unknown_labels = review_dataset.get_unknown_data()
+    unknown_predictions = evaluate_vae(model, unknown_embeddings, device)
+    unknown_precision, unknown_recall, unknown_f1 = calculate_metrics(unknown_predictions,unknown_labels, threshold)
+    print(f"Unknown Precision: {unknown_precision}, Recall: {unknown_recall}, F1-Score: {unknown_f1}")
 
 def main():
-    texts, labels = load_data()
-    embeddings = get_specter_embeddings(texts)
-    X_train, X_test, y_train, y_test = train_test_split(embeddings, labels, test_size=0.2)
+     # Settings
+    data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
+    set_seed(999)
+    device = set_device()
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    input_dim = X_train.shape[1]
     latent_dim = 128
-    beta = 0.1
-    vae = VAE(input_dim, latent_dim, beta).to(device)
+    initial_train_size = 1
+    batch_size = 32
+    epochs = 200
     
-    train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32))
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    # Initialize Dataset
+    review_dataset = ReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter')
     
-    optimizer = torch.optim.Adam(vae.parameters(), lr=1e-4)
-    train_vae(vae, train_loader, optimizer, epochs=200, device=device)
+    #initialize model
+    input_dim = review_dataset.embeddings.shape[1]
+    vae = VAE(input_dim, latent_dim, beta=0.1).to(device)
+    optimizer = optim.Adam(vae.parameters(), lr=1e-4)
     
-    latent_rep = evaluate(vae, DataLoader(TensorDataset(torch.tensor(X_test, dtype=torch.float32)), batch_size=32), device)
     
-    # Classification using the latent representation
-    # Implement your classification logic here
+    # Iterative training loop
+    while len(review_dataset.unknown_indices) > 0:
+        print("************************")
+        print(f"Train size: {len(review_dataset.train_embeddings)}, Unknonwn Size: {len(review_dataset.unknown_indices)}")
+       
+        # DataLoaders
+        train_loader = DataLoader(review_dataset, batch_size=batch_size, shuffle=True)
+      
+        # Train the VAE
+        train_vae(vae, train_loader, optimizer, epochs=epochs, device=device)
+
+        # Get predictions and rank documents
+        unknown_embeddings,unknown_labels = review_dataset.get_unknown_data()
+        ranked_indices = rank_papers(vae, unknown_embeddings, device)
+        
+        # Select the highest ranked document
+        selected_index = ranked_indices[0]
+        
+       
+        # Update the training set with human feedback (simulate by using ground truth label)
+        review_dataset.update_train_set(selected_index)
+
+        # Evaluate (optional, do not use for training)
+        evaluate_per_iteration(vae, review_dataset, device)
+        
+
+if __name__ == '__main__':
+    main()
