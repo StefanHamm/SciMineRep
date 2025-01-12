@@ -7,7 +7,6 @@
   - `ranking_scripts/`: Scripts for ranking algorithms.
 - `data/`: Data files.
 - `conda_env.yml`: Conda environment file.
-- `requirements.txt`: Python package requirements.
 - `README.md`: This file.
 
 ## Setup Instructions
@@ -16,10 +15,6 @@
     ```bash
     conda env create -f conda_env.yml
     conda activate scimine_env
-    ```
-1. **Install Python Packages**
-    ```bash
-    pip install -r requirements.txt
     ```
 2. **Download and Preprocess Data**
     ```bash
