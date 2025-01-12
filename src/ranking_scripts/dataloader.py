@@ -7,6 +7,7 @@ import os
 
 # path to where this file is located
 dir_path = os.path.dirname(os.path.realpath(__file__))
+processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
 
 class ReviewDataset(Dataset):
     def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0):
@@ -16,8 +17,12 @@ class ReviewDataset(Dataset):
         self.model = AutoModel.from_pretrained('allenai/specter')
         self.embeddings = self._get_specter_embeddings(self.texts)
         
-        # Placeholder for SciBERT - we generate random embeddings for now
-        self.embeddings_scibert = self._create_placeholder_scibert_embeddings(len(self.texts))
+        # SciBERT embeddings
+        autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
+        self.autophrase_data = self._read_autophrase_output_for_scibert(autophrase_file)
+        self.scibert_tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+        self.scibert_model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
+        self.embeddings_scibert = self._create_scibert_embeddings(len(self.texts))
         
         self.known_indices = list(range(initial_train_size))
         self.unknown_indices = list(range(initial_train_size, len(self.texts)))
@@ -57,19 +62,91 @@ class ReviewDataset(Dataset):
               result = self.model(**inputs)
          embedding = result.last_hidden_state[:, 0, :]
          return embedding
-     
-    def _create_placeholder_scibert_embeddings(self, num_texts):
-    # Create random embeddings as a placeholder for SciBERT
-        placeholder_embeddings = []
+    
+    def _read_autophrase_output_for_scibert(self, autophrase_file):
+        """
+        Reads each line of the AutoPhrase segmentation output (one doc per line),
+        extracts every phrase enclosed in <phrase_Q=...>...</phrase>.
+        Returns a list of lists: phrases_per_doc[i] is all phrases from doc i.
+        """
+        pattern = re.compile(r'<phrase_Q=[^>]*>([^<]+)</phrase>')
+        phrases_per_doc = []
+        
+        with open(autophrase_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    phrases_per_doc.append([])
+                    continue
+                
+                # Extract all phrases from the document
+                matches = pattern.findall(line)
+                phrases_per_doc.append(matches)
+        
+        return phrases_per_doc
+    
+    def _create_scibert_embeddings(self, num_texts):
+        """
+        Creates phrase-level SciBERT embeddings following the paper's methodology
+        while maintaining compatibility with the existing codebase structure.
+        Returns a list of torch.Tensor with shape [768] for each document.
+        """
+        all_phrases_per_doc = self._read_autophrase_output_for_scibert(self.autophrase_file)
+        scibert_embeddings = []
+
         for i in range(num_texts):
-            num_phrases = np.random.randint(3,10) #Generate a random number of phrases between 3 and 10 for each paper
+            phrases = all_phrases_per_doc[i]
+            doc_text = self.texts[i]
+            
+            if not phrases:
+                scibert_embeddings.append(torch.zeros(768))  # Match original size
+                continue
+                
             phrase_embeddings = []
-            for j in range(num_phrases):
-                phrase_embeddings.append(torch.randn(768)) #768 is the scibert embedding size
-            # Average the phrase embeddings for each document
-            averaged_embedding = torch.mean(torch.stack(phrase_embeddings), dim=0)
-            placeholder_embeddings.append(averaged_embedding)
-        return placeholder_embeddings
+            for phrase in phrases:
+                # Content feature (x_l_p)
+                content_inputs = self.scibert_tokenizer(
+                    phrase,
+                    padding=True,
+                    truncation=True,
+                    max_length=64,
+                    return_tensors="pt"
+                )
+                with torch.no_grad():
+                    content_outputs = self.scibert_model(**content_inputs)
+                content_emb = content_outputs.last_hidden_state.mean(dim=1).squeeze(0)  # Average token embeddings
+
+                # Context feature (y_l_p)
+                masked_text = doc_text.replace(phrase, self.scibert_tokenizer.mask_token)
+                context_inputs = self.scibert_tokenizer(
+                    masked_text,
+                    padding=True,
+                    truncation=True,
+                    max_length=512,
+                    return_tensors="pt"
+                )
+                with torch.no_grad():
+                    context_outputs = self.scibert_model(**context_inputs)
+                
+                # Get [MASK] token embedding
+                mask_positions = (context_inputs["input_ids"] == self.scibert_tokenizer.mask_token_id).nonzero(as_tuple=True)
+                if len(mask_positions[0]) > 0:
+                    context_emb = context_outputs.last_hidden_state[0, mask_positions[1][0]]
+                else:
+                    context_emb = context_outputs.last_hidden_state.mean(dim=1).squeeze(0)
+
+                # Final phrase embedding: average of content and context
+                phrase_emb = (content_emb + context_emb) / 2
+                phrase_embeddings.append(phrase_emb)
+
+            # Average all phrase embeddings for the document
+            if phrase_embeddings:
+                doc_embedding = torch.stack(phrase_embeddings).mean(dim=0)
+                scibert_embeddings.append(doc_embedding)
+            else:
+                scibert_embeddings.append(torch.zeros(768))
+
+        return scibert_embeddings
     
 
     def update_train_set(self, index):
