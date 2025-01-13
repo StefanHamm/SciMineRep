@@ -2,7 +2,7 @@ name: scimine_env
 channels:
   - defaults
 dependencies:
-  - python=3.8
+  - python=3.9
   - pandas
   - scikit-learn 
   - pytorch
@@ -11,6 +11,6 @@ dependencies:
   - requests
   - beautifulsoup4
   - pip:
-      - transformers==4.2.0
+      - transformers==4.48.0
       - synergy_dataset
       - aiohttp
