@@ -5,6 +5,9 @@ from transformers import AutoTokenizer, AutoModel
 import numpy as np
 import os
 
+#import re for autophrase output
+import re
+
 # path to where this file is located
 dir_path = os.path.dirname(os.path.realpath(__file__))
 processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
@@ -18,8 +21,8 @@ class ReviewDataset(Dataset):
         self.embeddings = self._get_specter_embeddings(self.texts)
         
         # SciBERT embeddings
-        autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
-        self.autophrase_data = self._read_autophrase_output_for_scibert(autophrase_file)
+        self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
+        self.autophrase_data = self._read_autophrase_output_for_scibert()
         self.scibert_tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.scibert_model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
         self.embeddings_scibert = self._create_scibert_embeddings(len(self.texts))
@@ -63,7 +66,7 @@ class ReviewDataset(Dataset):
          embedding = result.last_hidden_state[:, 0, :]
          return embedding
     
-    def _read_autophrase_output_for_scibert(self, autophrase_file):
+    def _read_autophrase_output_for_scibert(self):
         """
         Reads each line of the AutoPhrase segmentation output (one doc per line),
         extracts every phrase enclosed in <phrase_Q=...>...</phrase>.
@@ -72,7 +75,7 @@ class ReviewDataset(Dataset):
         pattern = re.compile(r'<phrase_Q=[^>]*>([^<]+)</phrase>')
         phrases_per_doc = []
         
-        with open(autophrase_file, "r", encoding="utf-8") as f:
+        with open(self.autophrase_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -91,7 +94,7 @@ class ReviewDataset(Dataset):
         while maintaining compatibility with the existing codebase structure.
         Returns a list of torch.Tensor with shape [768] for each document.
         """
-        all_phrases_per_doc = self._read_autophrase_output_for_scibert(self.autophrase_file)
+        all_phrases_per_doc = self._read_autophrase_output_for_scibert()
         scibert_embeddings = []
 
         for i in range(num_texts):
