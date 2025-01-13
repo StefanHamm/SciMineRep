@@ -40,3 +40,8 @@ Write the package name and version in the `conda_env.yml` file under the `depend
     ```bash
     conda env update -f conda_env.yml
     ```
+
+- **Specific torch for cuda 12.6**
+    ```bash
+    pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu126
+    ```

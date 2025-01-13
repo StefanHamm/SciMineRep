@@ -3,12 +3,18 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score
 import numpy as np
-from dataloader import ReviewDataset
+from dataloader import newReviewDataset,ReviewDataset
 from vae_model import VAE
 from utils import set_seed, set_device
 import os
 import random
 import math
+
+#check if cuda is available
+deviceType = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(deviceType)
+
+
 # path to where this file is located
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -42,14 +48,15 @@ def rank_papers(model, unknown_embeddings, device):
     predictions = evaluate_vae(model, unknown_embeddings, device)
     print(predictions)
     indices = np.argsort(-predictions)
-    return indices
+    return indices,predictions
 
 def calculate_metrics(predictions, labels, threshold=0.5):
     """
     Calculates precision, recall, and f1-score for given predictions and labels.
     """
+    print(labels)
     predicted_labels = (predictions >= threshold).astype(int) #converting the ranking scores to binary values
-    
+    print(predicted_labels)
     true_positives = np.sum((predicted_labels == 1) & (labels == 1))
     false_positives = np.sum((predicted_labels == 1) & (labels == 0))
     false_negatives = np.sum((predicted_labels == 0) & (labels == 1))
@@ -78,6 +85,7 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
 def main():
      # Settings
     data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
+    #data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
     set_seed(999)
     device = set_device()
     
@@ -87,11 +95,11 @@ def main():
     epochs = 200
     
     # Initialize Dataset
-    review_dataset = ReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf')
-    
+    #review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter', create_tensors=True,device=deviceType)
+    review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType)
     #initialize model
     input_dim = review_dataset.embeddings.shape[1]
-    vae = VAE(input_dim, latent_dim, beta=0.1).to(device)
+    vae = VAE(input_dim, latent_dim, beta=0.1).to(deviceType)
     optimizer = optim.Adam(vae.parameters(), lr=1e-4)
     
     
@@ -108,8 +116,12 @@ def main():
 
         # Get predictions and rank documents
         unknown_embeddings,unknown_labels = review_dataset.get_unknown_data()
-        ranked_indices = rank_papers(vae, unknown_embeddings, device)
+        ranked_indices,predictions = rank_papers(vae, unknown_embeddings, device)
         
+        #info
+        print("Highest rankd index: ",ranked_indices[0])
+        print("Value of highest ranked index: ",predictions[ranked_indices[0]])
+        print("Label of highest ranked index: ",unknown_labels[ranked_indices[0]])
         # Select the highest ranked document
         selected_index = ranked_indices[0]
         

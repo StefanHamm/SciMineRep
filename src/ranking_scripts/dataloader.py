@@ -269,3 +269,145 @@ class ReviewDataset(Dataset):
              return self.train_embeddings, self.train_embeddings_scibert, self.train_labels
         elif self.return_embedding == 'tfidf':
             return self.train_embeddings_tfidf, self.train_labels
+
+
+
+
+class newReviewDataset(Dataset):
+    def __init__(self, data_path, initial_train_size=1, return_embedding='specter', use_pseudo_for_scibert=False, start_idx=0,device='cpu'):
+        self.data_path = data_path
+        self.texts, self.labels = self._load_data()
+        self.return_embedding = return_embedding
+        self.use_pseudo_for_scibert = use_pseudo_for_scibert
+        self.device = device
+        
+        print("Intializing embeddings")
+
+        # Embedding initialization
+        self.embeddings = self._initialize_embeddings()
+        
+        # Partition indices
+        self.known_indices = list(range(initial_train_size))
+        self.unknown_indices = list(range(initial_train_size, len(self.texts)))
+        self.labels = np.array(self.labels)
+        
+        # Train and pseudo train data
+        # Train embeddings: Use known_indices to slice self.embeddings
+        self.train_embeddings = self.embeddings[self.known_indices]
+        self.train_labels = self.labels[self.known_indices]
+        self.pseudo_train_labels = np.array([])
+        self.pseudo_train_embeddings = []
+        
+        # Unknown data
+        self.unknown_embeddings = self.embeddings[self.unknown_indices]
+        self.unknown_labels = self.labels[self.unknown_indices]
+
+        
+    def _load_data(self):
+        data = pd.read_csv(self.data_path)
+        texts = data['title'] + ' ' + data['abstract']
+        labels = data['label'].values
+        return texts.tolist(), labels.tolist()
+
+    def _initialize_embeddings(self):
+        if self.return_embedding == 'specter':
+            tokenizer = AutoTokenizer.from_pretrained('allenai/specter')
+            model = AutoModel.from_pretrained('allenai/specter')
+            model.to(self.device)
+            return self._get_transformer_embeddings(self.texts, tokenizer, model)
+        elif self.return_embedding == 'tfidf':
+            vectorizer = TfidfVectorizer(max_features=768)
+            tfidf_matrix = vectorizer.fit_transform(self.texts).toarray()
+            #return [torch.tensor(vec, dtype=torch.float32) for vec in tfidf_matrix]
+            return torch.tensor(tfidf_matrix, dtype=torch.float32, device=self.device)
+        elif self.return_embedding == 'scibert':
+            self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
+            self.autophrase_data = self._read_autophrase_output_for_scibert()
+            tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+            model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
+            model.to(self.device)
+            return self._create_scibert_embeddings(len(self.texts), tokenizer, model)
+        else:
+            raise ValueError("Invalid embedding type. Choose 'specter', 'tfidf', or 'scibert'.")
+
+    def _get_transformer_embeddings(self, texts, tokenizer, model):
+        print("Getting transformer embeddings")
+        inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=512)
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}  # Move all tensors to the specified device
+        with torch.no_grad():
+            result = model(**inputs)
+        print("Got embeddings")
+        return result.last_hidden_state[:, 0, :]
+
+    def _read_autophrase_output_for_scibert(self):
+        pattern = re.compile(r'<phrase_Q=[^>]*>([^<]+)</phrase>')
+        phrases_per_doc = []
+        with open(self.autophrase_file, "r", encoding="utf-8") as f:
+            for line in f:
+                matches = pattern.findall(line.strip())
+                phrases_per_doc.append(matches if matches else [])
+        return phrases_per_doc
+
+    def _create_scibert_embeddings(self, num_texts, tokenizer, model):
+        all_phrases_per_doc = self._read_autophrase_output_for_scibert()
+        embeddings = []
+        for i, phrases in enumerate(all_phrases_per_doc):
+            if not phrases:
+                embeddings.append(torch.zeros(768))
+                continue
+            phrase_embeddings = []
+            for phrase in phrases:
+                content_inputs = tokenizer(phrase, padding=True, truncation=True, return_tensors="pt", max_length=64)
+                with torch.no_grad():
+                    content_emb = model(**content_inputs).last_hidden_state.mean(dim=1).squeeze(0)
+                phrase_embeddings.append(content_emb)
+            embeddings.append(torch.stack(phrase_embeddings).mean(dim=0) if phrase_embeddings else torch.zeros(768))
+        return torch.stack(embeddings)
+
+    def update_train_set(self, index):
+        
+        # print("Before update:")
+        # print("known_indices:", self.known_indices)
+        # print("unknown_indices:", self.unknown_indices)
+        # print("train_embeddings shape:", self.train_embeddings.shape if self.create_tensors else len(self.train_embeddings))
+        # print("unknown_embeddings shape:", self.unknown_embeddings.shape if self.create_tensors else len(self.unknown_embeddings))
+        # print("train_labels shape:", self.train_labels.shape)
+        # print("unknown_labels shape:", self.unknown_labels.shape)
+        
+        # Get the index from unknown_indices at position 'index'
+        idx = self.unknown_indices.pop(index)
+        self.known_indices.append(idx)
+        
+        self.train_embeddings = self.embeddings[self.known_indices]
+        self.unknown_embeddings = self.embeddings[self.unknown_indices]
+        
+        self.train_labels = self.labels[self.known_indices]
+        self.unknown_labels = self.labels[self.unknown_indices]
+            
+         # Debug prints after update
+        # print("After update:")
+        # print("known_indices:", self.known_indices)
+        # print("unknown_indices:", self.unknown_indices)
+        # print("train_embeddings shape:", self.train_embeddings.shape if self.create_tensors else len(self.train_embeddings))
+        # print("unknown_embeddings shape:", self.unknown_embeddings.shape if self.create_tensors else len(self.unknown_embeddings))
+        # print("train_labels shape:", self.train_labels.shape)
+        # print("unknown_labels shape:", self.unknown_labels.shape)
+
+    def add_pseudo_labels(self, pseudo_labels):
+        self.pseudo_train_labels = torch.tensor(pseudo_labels, dtype=torch.float32, device=self.device)
+        self.pseudo_train_embeddings = self.embeddings[self.unknown_indices[:len(pseudo_labels)]]
+
+    def __len__(self):
+        return len(self.train_embeddings) + (len(self.pseudo_train_embeddings) if self.use_pseudo_for_scibert else 0)
+
+    def __getitem__(self, idx):
+        if idx < len(self.train_embeddings):
+            return self.train_embeddings[idx], self.train_labels[idx]
+        pseudo_idx = idx - len(self.train_embeddings)
+        return self.pseudo_train_embeddings[pseudo_idx], self.pseudo_train_labels[pseudo_idx]
+
+    def get_unknown_data(self):
+        return self.unknown_embeddings, self.unknown_labels
+
+    def get_known_data(self):
+        return self.train_embeddings, self.train_labels
