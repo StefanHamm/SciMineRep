@@ -281,6 +281,12 @@ class newReviewDataset(Dataset):
         self.use_pseudo_for_scibert = use_pseudo_for_scibert
         self.device = device
         
+        #print count of 0 and 1 labels sum(labels),len(labels)-sum(labels)
+        print("====Data Summary====")
+        print("0 = not relevant, 1 = relevant")
+        print("Number of 0 labels:",len(self.labels)-sum(self.labels))
+        print("Number of 1 labels:",sum(self.labels))
+        
         print("Intializing embeddings")
 
         # Embedding initialization
