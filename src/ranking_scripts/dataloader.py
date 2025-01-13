@@ -17,36 +17,48 @@ class ReviewDataset(Dataset):
     def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
-        self.tokenizer = AutoTokenizer.from_pretrained('allenai/specter')
-        self.model = AutoModel.from_pretrained('allenai/specter')
-        self.embeddings = self._get_specter_embeddings(self.texts)
-        
-        # TF-IDF embeddings
-        self.embedding_tfidf = self._get_tfidf_embeddings(self.texts)
+        self.return_embedding = return_embedding
 
-        # SciBERT embeddings
-        self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
-        self.autophrase_data = self._read_autophrase_output_for_scibert()
-        self.scibert_tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
-        self.scibert_model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
-        self.embeddings_scibert = self._create_scibert_embeddings(len(self.texts))
-        
+        # Initialize embeddings based on return_embedding
+        if self.return_embedding == 'specter' or self.return_embedding == 'both':
+            self.tokenizer = AutoTokenizer.from_pretrained('allenai/specter')
+            self.model = AutoModel.from_pretrained('allenai/specter')
+            self.embeddings = self._get_specter_embeddings(self.texts)
+
+        if self.return_embedding == 'tfidf':
+            self.embedding_tfidf = self._get_tfidf_embeddings(self.texts)
+
+        if self.return_embedding == 'scibert' or self.return_embedding == 'both':
+            self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
+            self.autophrase_data = self._read_autophrase_output_for_scibert()
+            self.scibert_tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+            self.scibert_model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
+            self.embeddings_scibert = self._create_scibert_embeddings(len(self.texts))
+
         self.known_indices = list(range(initial_train_size))
         self.unknown_indices = list(range(initial_train_size, len(self.texts)))
         
         self.labels = np.array(self.labels)
-       
-        self.train_embeddings = self.embeddings[self.known_indices]
-        self.train_labels = self.labels[self.known_indices]
-        self.train_embeddings_scibert = [self.embeddings_scibert[i] for i in self.known_indices]
-        self.train_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.known_indices]
 
-        self.unknown_embeddings = self.embeddings[self.unknown_indices]
-        self.unknown_labels = self.labels[self.unknown_indices]
-        self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
-        self.unknown_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.unknown_indices]
+        # Initialize train and unknown embeddings based on return_embedding
+        if self.return_embedding == 'specter':
+            self.train_embeddings = self.embeddings[self.known_indices]
+            self.unknown_embeddings = self.embeddings[self.unknown_indices]
+        elif self.return_embedding == 'tfidf':
+            self.train_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.known_indices]
+            self.unknown_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.unknown_indices]
+        elif self.return_embedding == 'scibert':
+            self.train_embeddings_scibert = [self.embeddings_scibert[i] for i in self.known_indices]
+            self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
+        elif self.return_embedding == 'both':
+            self.train_embeddings = self.embeddings[self.known_indices]
+            self.train_embeddings_scibert = [self.embeddings_scibert[i] for i in self.known_indices]
+            self.unknown_embeddings = self.embeddings[self.unknown_indices]
+            self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
         
-        self.return_embedding = return_embedding
+        self.train_labels = self.labels[self.known_indices]
+        self.unknown_labels = self.labels[self.unknown_indices]
+        
         self.current_idx = start_idx
         
         self.pseudo_train_labels = np.array([])
@@ -254,5 +266,6 @@ class ReviewDataset(Dataset):
         elif self.return_embedding == 'scibert':
             return self.train_embeddings_scibert, self.train_labels
         elif self.return_embedding == 'both':
-             return self.train_embeddings, self.train_embeddings_scibert, self.train_labels        elif self.return_embedding == 'tfidf':
+             return self.train_embeddings, self.train_embeddings_scibert, self.train_labels
+        elif self.return_embedding == 'tfidf':
             return self.train_embeddings_tfidf, self.train_labels

@@ -77,7 +77,7 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
 
 def main():
      # Settings
-    data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
+    data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
     set_seed(999)
     device = set_device()
     
@@ -87,7 +87,7 @@ def main():
     epochs = 200
     
     # Initialize Dataset
-    review_dataset = ReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter')
+    review_dataset = ReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf')
     
     #initialize model
     input_dim = review_dataset.embeddings.shape[1]
@@ -99,10 +99,10 @@ def main():
     while len(review_dataset.unknown_indices) > 0:
         print("************************")
         print(f"Train size: {len(review_dataset.train_embeddings)}, Unknonwn Size: {len(review_dataset.unknown_indices)}")
-       
+    
         # DataLoaders
         train_loader = DataLoader(review_dataset, batch_size=batch_size, shuffle=True)
-      
+    
         # Train the VAE
         train_vae(vae, train_loader, optimizer, epochs=epochs, device=device)
 
@@ -113,7 +113,7 @@ def main():
         # Select the highest ranked document
         selected_index = ranked_indices[0]
         
-       
+    
         # Update the training set with human feedback (simulate by using ground truth label)
         review_dataset.update_train_set(selected_index)
 
