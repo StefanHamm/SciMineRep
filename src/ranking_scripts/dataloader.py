@@ -4,6 +4,7 @@ import pandas as pd
 from transformers import AutoTokenizer, AutoModel
 import numpy as np
 import os
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 #import re for autophrase output
 import re
@@ -20,6 +21,9 @@ class ReviewDataset(Dataset):
         self.model = AutoModel.from_pretrained('allenai/specter')
         self.embeddings = self._get_specter_embeddings(self.texts)
         
+        # TF-IDF embeddings
+        self.embedding_tfidf = self._get_tfidf_embeddings(self.texts)
+
         # SciBERT embeddings
         self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
         self.autophrase_data = self._read_autophrase_output_for_scibert()
@@ -35,10 +39,12 @@ class ReviewDataset(Dataset):
         self.train_embeddings = self.embeddings[self.known_indices]
         self.train_labels = self.labels[self.known_indices]
         self.train_embeddings_scibert = [self.embeddings_scibert[i] for i in self.known_indices]
+        self.train_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.known_indices]
 
         self.unknown_embeddings = self.embeddings[self.unknown_indices]
         self.unknown_labels = self.labels[self.unknown_indices]
         self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
+        self.unknown_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.unknown_indices]
         
         self.return_embedding = return_embedding
         self.current_idx = start_idx
@@ -65,6 +71,11 @@ class ReviewDataset(Dataset):
               result = self.model(**inputs)
          embedding = result.last_hidden_state[:, 0, :]
          return embedding
+
+    def _get_tfidf_embeddings(self, texts):
+        vectorizer = TfidfVectorizer(max_features=768)
+        tfidf_matrix = vectorizer.fit_transform(texts).toarray()
+        return [torch.tensor(vec, dtype=torch.float32) for vec in tfidf_matrix]
     
     def _read_autophrase_output_for_scibert(self):
         """
@@ -162,6 +173,7 @@ class ReviewDataset(Dataset):
         new_train_embedding = self.unknown_embeddings[index]
         new_train_label = self.unknown_labels[index]
         new_train_embedding_scibert = self.unknown_embeddings_scibert[index]
+        new_train_embedding_tfidf = self.unknown_embeddings_tfidf[index]
         
         #add paper to train
         if len(self.train_embeddings.shape) == 1:
@@ -170,6 +182,7 @@ class ReviewDataset(Dataset):
             self.train_embeddings = torch.cat((self.train_embeddings, new_train_embedding.unsqueeze(0)), dim=0)
         self.train_labels = np.append(self.train_labels, new_train_label)
         self.train_embeddings_scibert.append(new_train_embedding_scibert)
+        self.train_embeddings_tfidf.append(new_train_embedding_tfidf)
         
         #update known and unknown indices
         
@@ -183,6 +196,7 @@ class ReviewDataset(Dataset):
         self.unknown_embeddings = self.embeddings[self.unknown_indices]
         self.unknown_labels = np.array(self.labels)[self.unknown_indices]
         self.unknown_embeddings_scibert = [self.embeddings_scibert[i] for i in self.unknown_indices]
+        self.unknown_embeddings_tfidf = [self.embedding_tfidf[i] for i in self.unknown_indices]
         
     
     def add_pseudo_labels(self, pseudo_labels):
@@ -221,6 +235,8 @@ class ReviewDataset(Dataset):
                 return self.train_embeddings_scibert[idx], self.train_labels[idx]
         elif self.return_embedding == 'both':
             return self.train_embeddings[idx], self.train_embeddings_scibert[idx], self.train_labels[idx]
+        elif self.return_embedding == 'tfidf':
+            return self.train_embeddings_tfidf[idx], self.train_labels[idx]
         
     def get_unknown_data(self):
         if self.return_embedding == 'specter':
@@ -229,6 +245,8 @@ class ReviewDataset(Dataset):
             return self.unknown_embeddings_scibert, self.unknown_labels
         elif self.return_embedding == 'both':
              return self.unknown_embeddings, self.unknown_embeddings_scibert, self.unknown_labels
+        elif self.return_embedding == 'tfidf':
+            return self.unknown_embeddings_tfidf, self.unknown_labels
     
     def get_known_data(self):
         if self.return_embedding == 'specter':
@@ -236,4 +254,5 @@ class ReviewDataset(Dataset):
         elif self.return_embedding == 'scibert':
             return self.train_embeddings_scibert, self.train_labels
         elif self.return_embedding == 'both':
-             return self.train_embeddings, self.train_embeddings_scibert, self.train_labels
+             return self.train_embeddings, self.train_embeddings_scibert, self.train_labels        elif self.return_embedding == 'tfidf':
+            return self.train_embeddings_tfidf, self.train_labels
