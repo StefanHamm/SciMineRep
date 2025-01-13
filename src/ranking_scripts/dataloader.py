@@ -350,19 +350,61 @@ class newReviewDataset(Dataset):
 
     def _create_scibert_embeddings(self, num_texts, tokenizer, model):
         all_phrases_per_doc = self._read_autophrase_output_for_scibert()
-        embeddings = []
-        for i, phrases in enumerate(all_phrases_per_doc):
+        scibert_embeddings = []
+        
+        for i in range(num_texts):
+            phrases = all_phrases_per_doc[i]
+            doc_text = self.texts[i]
+            
             if not phrases:
-                embeddings.append(torch.zeros(768))
+                scibert_embeddings.append(torch.zeros(768))
                 continue
+                
             phrase_embeddings = []
             for phrase in phrases:
-                content_inputs = tokenizer(phrase, padding=True, truncation=True, return_tensors="pt", max_length=64)
+                # Content feature (x_l_p)
+                content_inputs = tokenizer(
+                    phrase,
+                    padding=True,
+                    truncation=True,
+                    max_length=64,
+                    return_tensors="pt"
+                )
                 with torch.no_grad():
-                    content_emb = model(**content_inputs).last_hidden_state.mean(dim=1).squeeze(0)
-                phrase_embeddings.append(content_emb)
-            embeddings.append(torch.stack(phrase_embeddings).mean(dim=0) if phrase_embeddings else torch.zeros(768))
-        return torch.stack(embeddings)
+                    content_outputs = model(**content_inputs)
+                content_emb = content_outputs.last_hidden_state.mean(dim=1).squeeze(0)
+                
+                # Context feature (y_l_p)
+                masked_text = doc_text.replace(phrase, tokenizer.mask_token)
+                context_inputs = tokenizer(
+                    masked_text,
+                    padding=True,
+                    truncation=True,
+                    max_length=512,
+                    return_tensors="pt"
+                )
+                with torch.no_grad():
+                    context_outputs = model(**context_inputs)
+                    
+                # Get [MASK] token embedding
+                mask_positions = (context_inputs["input_ids"] == tokenizer.mask_token_id).nonzero(as_tuple=True)
+                if len(mask_positions[0]) > 0:
+                    context_emb = context_outputs.last_hidden_state[0, mask_positions[1][0]]
+                else:
+                    context_emb = context_outputs.last_hidden_state.mean(dim=1).squeeze(0)
+                
+                # Final phrase embedding: average of content and context
+                phrase_emb = (content_emb + context_emb) / 2
+                phrase_embeddings.append(phrase_emb)
+                
+            # Average all phrase embeddings for the document
+            if phrase_embeddings:
+                doc_embedding = torch.stack(phrase_embeddings).mean(dim=0)
+                scibert_embeddings.append(doc_embedding)
+            else:
+                scibert_embeddings.append(torch.zeros(768))
+            
+        return torch.stack(scibert_embeddings)
 
     def update_train_set(self, index):
         
