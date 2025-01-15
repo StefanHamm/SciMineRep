@@ -526,7 +526,7 @@ class newReviewDataset(Dataset):
         
         return G
 
-    def create_phrase_similarity_graph(texts, labels, num_texts, tokenizer, model, selection_percentage=0.30):
+    def create_phrase_similarity_graph(self, texts, labels, num_texts, tokenizer, model, selection_percentage=0.30):
         """
         Main function to create phrase similarity graph:
         1. Select relevant phrases
@@ -534,15 +534,15 @@ class newReviewDataset(Dataset):
         3. Build graph with similarity edges
         """
         # Select relevant phrases
-        selected_phrases = select_relevant_phrases(texts, labels, selection_percentage)
+        selected_phrases = self.select_relevant_phrases(texts, labels, selection_percentage)
         
         # Create embeddings only for selected phrases
-        phrase_embeddings = create_selected_phrase_embeddings(
+        phrase_embeddings = self.create_selected_phrase_embeddings(
             texts, num_texts, tokenizer, model, selected_phrases
         )
         
         # Build graph
-        phrase_graph = construct_phrase_graph(phrase_embeddings)
+        phrase_graph = self.construct_phrase_graph(phrase_embeddings)
         
         return phrase_graph, phrase_embeddings, selected_phrases
 
