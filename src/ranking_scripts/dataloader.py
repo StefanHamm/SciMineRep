@@ -300,6 +300,7 @@ class newReviewDataset(Dataset):
         # Embedding initialization
         self.embeddings = self._initialize_embeddings()
         
+
         # Partition indices
         self.known_indices = list(range(initial_train_size))
         self.unknown_indices = list(range(initial_train_size, len(self.texts)))
@@ -334,8 +335,21 @@ class newReviewDataset(Dataset):
             tfidf_matrix = vectorizer.fit_transform(self.texts).toarray()
             #return [torch.tensor(vec, dtype=torch.float32) for vec in tfidf_matrix]
             return torch.tensor(tfidf_matrix, dtype=torch.float32, device=self.device)
+        elif self.return_embedding == 'scibert':
+            # Initialize SciBERT components
+            tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
+            model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
+            model.to(self.device)
+            # Load AutoPhrase results
+            self.autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
+            phrases_per_doc = self._read_autophrase_output_for_scibert()
+            # Create embeddings
+            embeddings = self._create_scibert_embeddings(self.texts, len(self.texts), tokenizer, model, phrases_per_doc)
+            
+            # For scibert, return both embeddings and phrases in a list
+            return [embeddings, phrases_per_doc]
         else:
-            raise ValueError("Invalid embedding type. Choose 'specter', 'tfidf', or 'scibert'.")
+            raise ValueError("Invalid embedding type")
 
     def _get_transformer_embeddings(self, texts, tokenizer, model):
         print("Getting transformer embeddings")
@@ -394,69 +408,6 @@ class newReviewDataset(Dataset):
     def get_known_data(self):
         return self.train_embeddings, self.train_labels
 
-
-
-
-#TODO: - Check if embedding needs to be once or in every iteration
-#      - Check if phrase classifier is correct
-#      - Check if combined ranking is correct + figure out where to move the code
-#      - Figure out the whole pipeline
-#      - Get autophrase outputs for all datasets
-class PhraseLevelProcessor:
-    def __init__(self, tokenizer, model, autophrase_filename, device='cpu'):
-        """
-        Initialize the phrase level processor
-        
-        Args:
-            tokenizer: SciBERT tokenizer
-            model: SciBERT model
-            device: torch device
-        """
-        self.tokenizer = tokenizer
-        self.model = model
-        self.device = device
-        self.autophrase_file = os.path.join(processed_datasets_path, autophrase_filename)
-
-    def process_iteration(self, texts, labels, known_indices):
-        """
-        Process phrase level features for current iteration
-        
-        Args:
-            texts: List of all document texts
-            labels: Array of document labels
-            known_indices: List of indices of labeled documents
-            
-        Returns:
-            tuple: (communities, selected_features, feature_values)
-        """
-        # Read phrases from AutoPhrase
-        all_phrases = self._read_autophrase_output_for_scibert()
-        
-        # Select relevant phrases based on current labeled documents
-        selected_phrases = self.select_relevant_phrases(
-            [texts[i] for i in known_indices],
-            [labels[i] for i in known_indices]
-        )
-        
-        # Create embeddings for selected phrases
-        phrase_embeddings = self.create_selected_phrase_embeddings(
-            texts, 
-            len(texts),
-            self.tokenizer,
-            self.model,
-            selected_phrases
-        )
-        
-        # Build phrase graph
-        phrase_graph = self.construct_phrase_graph(phrase_embeddings)
-        
-        # Apply Louvain clustering and get features
-        communities, selected_features, feature_values = self.apply_louvain_to_phrase_graph(
-            [phrase_graph, phrase_embeddings, selected_phrases]
-        )
-        
-        return communities, selected_features, feature_values
-    
     def _read_autophrase_output_for_scibert(self):
         """Read and parse AutoPhrase output file"""
         pattern = re.compile(r'<phrase_Q=[^>]*>([^<]+)</phrase>')
@@ -467,201 +418,192 @@ class PhraseLevelProcessor:
                 phrases_per_doc.append(matches if matches else [])
         return phrases_per_doc
 
-    def select_relevant_phrases(texts, labels, selection_percentage=0.30):
-        """
-        Select relevant phrases based on indicative and unusual scores.
-        
-        Args:
-            texts: List of texts with AutoPhrase markup
-            labels: List of binary labels
-            selection_percentage: Percentage of top phrases to select
-        
-        Returns:
-            set: Selected phrases
-        """
-        def extract_phrases_from_autophrase(text):
-            pattern = re.compile(r'<phrase_Q=([^>]*)>([^<]+)</phrase>')
-            matches = pattern.findall(text)
-            return [(phrase, float(quality)) for quality, phrase in matches]
-        
-        def calculate_indicative_score(phrase, documents, labels):
-            """Calculate ID(p) = np,1 / |{Dl ∩ R}|"""
-            relevant_docs = [doc for doc, label in zip(documents, labels) if label == 1]
-            np1 = sum(1 for doc in relevant_docs if phrase in doc)
-            total_relevant = len(relevant_docs)
-            return np1 / total_relevant if total_relevant > 0 else 0
-        
-        def calculate_unusual_score(phrase, documents):
-            """Calculate UN(p) = log(|Dl| / |np,1 ∪ np,0|)"""
-            epsilon = 1e-10
-            total_docs = len(documents)
-            docs_with_phrase = sum(1 for doc in documents if phrase in doc) + epsilon
-            return np.log(total_docs / docs_with_phrase)
-        
-        # Extract all phrases from the corpus
-        all_phrases = set()
-        for text in texts:
-            phrases = extract_phrases_from_autophrase(text)
-            all_phrases.update(phrase for phrase, quality in phrases if quality >= 0.0)
-        
-        # Calculate scores for each phrase
-        epsilon = 1e-10
-        phrase_scores = {}
-        for phrase in all_phrases:
-            id_score = calculate_indicative_score(phrase, texts, labels) + epsilon
-            un_score = calculate_unusual_score(phrase, texts) + epsilon
-            if id_score > 0 and un_score > 0:
-                combined_score = gmean([id_score, un_score])
-                phrase_scores[phrase] = combined_score
-        
-        # Select top phrases
-        sorted_phrases = sorted(phrase_scores.items(), key=lambda item: item[1], reverse=True)
-        top_n = int(len(sorted_phrases) * selection_percentage)
-        selected_phrases = {phrase for phrase, score in sorted_phrases[:top_n]}
-        
-        return selected_phrases
+    def _create_scibert_embeddings(self, texts, num_texts, tokenizer, model, phrases_per_doc):
+        """Creates phrase-level SciBERT embeddings following paper methodology exactly"""
+        print("Creating SciBERT embeddings")
+        scibert_embeddings = []
 
-    def create_selected_phrase_embeddings(texts, num_texts, tokenizer, model, selected_phrases):
-        """
-        Create embeddings only for the selected phrases.
-        """
-        phrase_embeddings = {}
-        
-        # Collect all mentions of selected phrases
-        phrase_mentions = {phrase: [] for phrase in selected_phrases}
-        
         for doc_idx in range(num_texts):
+            phrases = phrases_per_doc[doc_idx]
             doc_text = texts[doc_idx]
-            sentences = doc_text.split('.')
             
-            for phrase in selected_phrases:
-                for sentence in sentences:
-                    if phrase in sentence:
-                        phrase_mentions[phrase].append((doc_idx, sentence.strip()))
-        
-        # Create embeddings for selected phrases
-        for phrase in selected_phrases:
-            mentions = phrase_mentions[phrase]
-            if not mentions:
+            if not phrases:
+                scibert_embeddings.append(torch.zeros(768*2, device=self.device))
                 continue
                 
-            mention_embeddings = []
-            for _, sentence in mentions:
-                # Content feature (x_l_p)
-                content_inputs = tokenizer(
-                    sentence,
-                    padding=True,
-                    truncation=True,
-                    max_length=512,
-                    return_tensors="pt"
-                )
-                
-                with torch.no_grad():
-                    content_outputs = model(**content_inputs)
-                
-                input_ids = content_inputs["input_ids"][0]
-                phrase_tokens = tokenizer.encode(phrase, add_special_tokens=False)
-                phrase_positions = []
-                
-                for i in range(len(input_ids) - len(phrase_tokens) + 1):
-                    if input_ids[i:i+len(phrase_tokens)].tolist() == phrase_tokens:
-                        phrase_positions.extend(range(i, i + len(phrase_tokens)))
-                
-                if phrase_positions:
-                    content_emb = content_outputs.last_hidden_state[0, phrase_positions].mean(dim=0)
-                else:
-                    content_emb = content_outputs.last_hidden_state.mean(dim=1).squeeze(0)
-                
-                # Context feature (y_l_p)
-                masked_text = sentence.replace(phrase, tokenizer.mask_token)
-                context_inputs = tokenizer(
-                    masked_text,
-                    padding=True,
-                    truncation=True,
-                    max_length=512,
-                    return_tensors="pt"
-                )
-                
-                with torch.no_grad():
-                    context_outputs = model(**context_inputs)
-                
-                mask_positions = (context_inputs["input_ids"] == tokenizer.mask_token_id).nonzero(as_tuple=True)
-                if len(mask_positions[0]) > 0:
-                    context_emb = context_outputs.last_hidden_state[0, mask_positions[1][0]]
-                else:
-                    context_emb = context_outputs.last_hidden_state.mean(dim=1).squeeze(0)
-                
-                mention_emb = torch.cat([content_emb, context_emb], dim=0)
-                mention_embeddings.append(mention_emb)
+            doc_phrase_embeddings = []
             
-            if mention_embeddings:
-                phrase_embeddings[phrase] = torch.stack(mention_embeddings).mean(dim=0)
-        
-        return phrase_embeddings
+            for phrase in phrases:
+                phrase_mention_embeddings = []
+                
+                # Get all occurrences (mentions) of the phrase in doc
+                phrase_mentions = []
+                start_idx = 0
+                while True:
+                    idx = doc_text.find(phrase, start_idx)
+                    if idx == -1:
+                        break
+                    phrase_mentions.append((idx, idx + len(phrase)))
+                    start_idx = idx + 1
+                    
+                if not phrase_mentions:
+                    continue
+                    
+                # For each mention
+                for mention_start, mention_end in phrase_mentions:
+                    # Content feature (x_l_p)
+                    content_inputs = tokenizer(
+                        phrase,
+                        padding=True, 
+                        truncation=True,
+                        max_length=64,
+                        return_tensors="pt"
+                    ).to(self.device)
 
-    def construct_phrase_graph(phrase_embeddings):
+                    with torch.no_grad():
+                        content_outputs = model(**content_inputs)
+                    content_emb = content_outputs.last_hidden_state.mean(dim=1).squeeze(0)
+
+                    # Context feature (y_l_p) 
+                    masked_text = (
+                        doc_text[:mention_start] + 
+                        tokenizer.mask_token + 
+                        doc_text[mention_end:]
+                    )
+                    context_inputs = tokenizer(
+                        masked_text,
+                        padding=True,
+                        truncation=True, 
+                        max_length=512,
+                        return_tensors="pt"
+                    ).to(self.device)
+
+                    with torch.no_grad():
+                        context_outputs = model(**context_inputs)
+
+                    # Get [MASK] token embedding
+                    mask_positions = (context_inputs["input_ids"] == tokenizer.mask_token_id).nonzero(as_tuple=True)
+                    if len(mask_positions[0]) > 0:
+                        context_emb = context_outputs.last_hidden_state[0, mask_positions[1][0]]
+                    else:
+                        context_emb = content_emb  # Fallback if mask token not found
+
+                    # Concatenate content and context features for this mention
+                    mention_emb = torch.cat([content_emb, context_emb], dim=0)
+                    phrase_mention_embeddings.append(mention_emb)
+
+                if phrase_mention_embeddings:
+                    # Average across all mentions of this phrase
+                    avg_phrase_emb = torch.stack(phrase_mention_embeddings).mean(dim=0)
+                    doc_phrase_embeddings.append(avg_phrase_emb)
+
+            if doc_phrase_embeddings:
+                # Average across all phrases in document
+                doc_embedding = torch.stack(doc_phrase_embeddings).mean(dim=0)
+                scibert_embeddings.append(doc_embedding)
+            else:
+                scibert_embeddings.append(torch.zeros(768*2, device=self.device))
+
+        return torch.stack(scibert_embeddings)
+
+#TODO: - Check if embedding needs to be once or in every iteration
+#      - Check if phrase classifier is correct
+#      - Check if combined ranking is correct + figure out where to move the code
+#      - Figure out the whole pipeline
+#      - Get autophrase outputs for all datasets
+class PhraseLevelProcessor:
+    def __init__(self, review_dataset):
         """
-        Construct graph only for selected phrases.
-        """
-        G = nx.Graph()
-        phrases = list(phrase_embeddings.keys())
-        G.add_nodes_from(phrases)
+        Initialize with dataset containing precomputed data
         
-        for i, phrase_i in enumerate(phrases):
-            emb_i = phrase_embeddings[phrase_i]
-            
-            for j, phrase_j in enumerate(phrases[i:], start=i):
-                emb_j = phrase_embeddings[phrase_j]
-                
-                similarity = cosine_similarity(emb_i.unsqueeze(0), emb_j.unsqueeze(0)).item()
-                weight = torch.sqrt(torch.maximum(torch.tensor(similarity), torch.tensor(0.0))).item()
-                
+        Args:
+            review_dataset: newReviewDataset instance with precomputed embeddings and phrases
+        """
+        self.dataset = review_dataset
+        # Access precomputed data
+        self.embeddings = review_dataset.embeddings[1] # The precomputed embeddings
+        self.phrases_per_doc = review_dataset.embeddings[0] # The precomputed autophrase output
+
+    def process_iteration(self, known_indices):
+        """Process phrase level features for current iteration"""
+        # Select relevant phrases based on current known docs
+        selected_phrases = self.select_relevant_phrases(known_indices)
+        
+        # Build graph using PRECOMPUTED embeddings
+        phrase_graph = self.construct_phrase_graph(selected_phrases)
+        
+        # Apply Louvain clustering
+        communities, selected_features, feature_values = self.apply_louvain_to_phrase_graph(
+            phrase_graph, selected_phrases, known_indices
+        )
+        
+        return communities, selected_features, feature_values
+
+    def select_relevant_phrases(self, known_indices, selection_percentage=0.30):
+        """Select relevant phrases using ID and UN scores"""
+        # Get labeled documents
+        labeled_docs = [self.dataset.texts[i] for i in known_indices]
+        labeled_labels = [self.dataset.labels[i] for i in known_indices]
+        
+        # Get phrases with quality scores from autophrase output
+        relevant_docs = [doc for doc, label in zip(labeled_docs, labeled_labels) if label == 1]
+        
+        phrase_scores = {}
+        for doc_idx, doc_phrases in enumerate(self.phrases_per_doc):
+            if doc_idx in known_indices:
+                for phrase in doc_phrases:
+                    # Calculate ID score (eq 8)
+                    np1 = sum(1 for doc in relevant_docs if phrase in doc)
+                    id_score = np1 / len(relevant_docs) if len(relevant_docs) > 0 else 0
+                    
+                    # Calculate UN score (eq 9)
+                    total_docs = len(labeled_docs)
+                    docs_with_phrase = sum(1 for doc in labeled_docs if phrase in doc)
+                    un_score = np.log(total_docs / (docs_with_phrase + 1e-10))
+                    
+                    if id_score > 0 and un_score > 0:
+                        phrase_scores[phrase] = gmean([id_score, un_score])
+
+        # Select top phrases
+        sorted_phrases = sorted(phrase_scores.items(), key=lambda x: x[1], reverse=True)
+        top_n = int(len(sorted_phrases) * selection_percentage)
+        return {phrase for phrase, _ in sorted_phrases[:top_n]}
+
+    def construct_phrase_graph(self, selected_phrases):
+        """Construct graph using precomputed embeddings"""
+        G = nx.Graph()
+        phrases_to_use = [p for p in selected_phrases if p in self.embeddings]
+        G.add_nodes_from(phrases_to_use)
+        
+        for i, phrase_i in enumerate(phrases_to_use):
+            emb_i = self.embeddings[phrase_i]
+            for j, phrase_j in enumerate(phrases_to_use[i:], start=i):
+                emb_j = self.embeddings[phrase_j]
+                sim = cosine_similarity(emb_i.unsqueeze(0), emb_j.unsqueeze(0)).item()
+                weight = float(torch.sqrt(torch.clamp(torch.tensor(sim), min=0.0)))
                 if weight > 0:
                     G.add_edge(phrase_i, phrase_j, weight=weight)
         
         return G
 
-    def create_phrase_similarity_graph(self, texts, labels, num_texts, tokenizer, model, selection_percentage=0.30):
-        """
-        Main function to create phrase similarity graph:
-        1. Select relevant phrases
-        2. Create embeddings for selected phrases
-        3. Build graph with similarity edges
-        """
-        # Select relevant phrases
-        selected_phrases = self.select_relevant_phrases(texts, labels, selection_percentage)
+    def apply_louvain_to_phrase_graph(self, graph, selected_phrases, known_indices):
+        """Apply Louvain clustering and get features"""
+        communities = self._louvain_clustering(graph)
         
-        # Create embeddings only for selected phrases
-        phrase_embeddings = self.create_selected_phrase_embeddings(
-            texts, num_texts, tokenizer, model, selected_phrases
-        )
+        # Calculate feature values using PRECOMPUTED embeddings
+        selected_features = self._select_phrase_features(communities, selected_phrases, known_indices)
+        feature_values = self._calculate_feature_values(selected_features, communities)
         
-        # Build graph
-        phrase_graph = self.construct_phrase_graph(phrase_embeddings)
-        
-        return phrase_graph, phrase_embeddings, selected_phrases
+        return communities, selected_features, feature_values
 
-    def louvain_clustering(self, graph):
-        """
-        Implementation of Louvain clustering using scikit-network while following SciMine specifications.
-        The algorithm finds communities by optimizing modularity in a hierarchical way.
-        
-        Args:
-            graph: NetworkX graph with weighted edges representing phrase similarities
-            
-        Returns:
-            dict: Node to community mapping
-        """
+    def _louvain_clustering(self, graph):
+        """Apply Louvain clustering as per paper"""
         from sknetwork.clustering import Louvain
-        import numpy as np
-        from scipy import sparse
         
-        # Convert NetworkX graph to sparse adjacency matrix
         nodes = list(graph.nodes())
         node_to_idx = {node: i for i, node in enumerate(nodes)}
         n = len(nodes)
         
-        # Create sparse matrix with weights
         rows, cols, weights = [], [], []
         for u, v, data in graph.edges(data=True):
             i, j = node_to_idx[u], node_to_idx[v]
@@ -671,211 +613,81 @@ class PhraseLevelProcessor:
             weights.extend([w, w])
         
         adj_matrix = sparse.csr_matrix((weights, (rows, cols)), shape=(n, n))
-        
-        # Initialize Louvain with parameters matching SciMine's approach
-        louvain = Louvain(
-            resolution=1.0,  # Standard resolution for modularity optimization
-            random_state=None,  # Deterministic results
-            tol=1e-9,  # High precision for convergence
-            max_iter=100  # Allow sufficient iterations for convergence
-        )
-        
-        # Run Louvain clustering
+        louvain = Louvain(resolution=1.0, random_state=None, tol=1e-9, max_iter=100)
         labels = louvain.fit_transform(adj_matrix)
         
-        # Convert numeric labels back to a dictionary mapping nodes to their communities
-        communities = {}
-        unique_labels = np.unique(labels)
-        
-        # Ensure community labels are consecutive integers starting from 0
-        label_map = {old_label: new_label for new_label, old_label in enumerate(unique_labels)}
-        
-        for node, label in zip(nodes, labels):
-            communities[node] = label_map[label]
-        
-        return communities
+        return {node: int(label) for node, label in zip(nodes, labels)}
 
-    def apply_louvain_to_phrase_graph(self, phrase_level_input):
-        """
-        Apply Louvain clustering to the phrase graph and store results.
-        This function applies community detection and selects phrase-level features
-        according to SciMine paper specifications.
+    def _select_phrase_features(self, communities, selected_phrases, known_indices, alpha=0.5):
+        """Select features using equations 11-13"""
+        community_to_phrases = defaultdict(list)
+        for phrase, comm in communities.items():
+            community_to_phrases[comm].append(phrase)
+            
+        relevant_labeled = [i for i in known_indices if self.dataset.labels[i] == 1]
         
-        Args:
-            phrase_level_input: List containing [phrase_graph, phrase_embeddings, selected_phrases]
-            
-        Returns:
-            tuple: (community_assignments, selected_features, feature_values)
-                - community_assignments: Dict mapping phrases to their communities
-                - selected_features: Set of cluster IDs selected as features
-                - feature_values: Dict mapping documents to their feature vectors
-                
-        Note:
-            This follows section 4.3 of SciMine paper for identifying 
-            non-overlapping communities and selecting phrase-level features.
-        """
-        try:
-            # Extract components from input
-            phrase_graph = phrase_level_input[0]
-            phrase_embeddings = phrase_level_input[1]
-            self.selected_phrases = phrase_level_input[2]
-            
-            if len(phrase_graph.nodes()) == 0:
-                print("Warning: Empty phrase graph")
-                return {}, set(), {}
-                
-            # Apply Louvain clustering
-            communities = self.louvain_clustering(phrase_graph)
-            
-            # Store the community assignments
-            self.phrase_communities = communities
-            
-            # Create reverse mapping of community to phrases
-            community_to_phrases = defaultdict(list)
-            for phrase, comm in communities.items():
-                community_to_phrases[comm].append(phrase)
-            self.community_to_phrases = dict(community_to_phrases)
-            
-            # Calculate and store community centroids
-            community_centroids = {}
-            for comm_id, phrases in community_to_phrases.items():
-                comm_embeddings = [phrase_embeddings[p] for p in phrases if p in phrase_embeddings]
-                if comm_embeddings:
-                    centroid = torch.stack(comm_embeddings).mean(dim=0)
-                    community_centroids[comm_id] = centroid
-            self.community_centroids = community_centroids
-            
-            # Select phrase-level features using equations 11-13 from the paper
-            selected_features = self.select_phrase_level_features()
-            
-            # Calculate feature values for each document
-            feature_values = {}
-            for doc_idx, doc in enumerate(self.texts):
-                doc_features = []
-                for cluster_id in sorted(selected_features):  # Sort for consistent order
-                    # Get max similarity between doc phrases and cluster phrases
-                    cluster_phrases = self.community_to_phrases[cluster_id]
-                    max_sim = 0.0
-                    for phrase in cluster_phrases:
-                        if phrase in doc:
-                            # Get phrase embedding and cluster centroid
-                            if phrase in phrase_embeddings and cluster_id in community_centroids:
-                                phrase_emb = phrase_embeddings[phrase]
-                                centroid = community_centroids[cluster_id]
-                                # Calculate cosine similarity
-                                sim = torch.cosine_similarity(phrase_emb.unsqueeze(0), 
-                                                           centroid.unsqueeze(0)).item()
-                                max_sim = max(max_sim, sim)
-                    doc_features.append(max_sim)
-                feature_values[doc_idx] = doc_features
-            
-            # Store results
-            self.feature_values = feature_values
-            
-            # Print statistics
-            num_communities = len(set(communities.values()))
-            num_features = len(selected_features)
-            avg_community_size = len(self.selected_phrases) / num_communities if num_communities > 0 else 0
-            print(f"Number of communities detected: {num_communities}")
-            print(f"Number of selected features: {num_features}")
-            print(f"Average community size: {avg_community_size:.2f}")
-            
-            return communities, selected_features, feature_values
-            
-        except ImportError:
-            print("Please install scikit-network: pip install scikit-network")
-            raise
-        except Exception as e:
-            print(f"Error in Louvain clustering: {str(e)}")
-            raise
-    
-    def select_phrase_level_features(self, alpha=0.5):
-        """
-        Select phrase-level features from clusters based on correlation with relevant documents.
-        Following equations 11-13 from SciMine paper.
-        
-        Args:
-            alpha: Threshold percentage for feature selection (default: 0.5)
-            
-        Returns:
-            set: Selected cluster IDs that serve as phrase-level features
-        """
-        # Get labeled documents and their indices
-        labeled_docs = {i: doc for i, doc in enumerate(self.texts) 
-                    if i in self.known_indices}
-        
-        # Get relevant labeled documents (D_l ∩ R) - equation 13 reference set
-        relevant_labeled_docs = {
-            idx: doc for idx, doc in labeled_docs.items() 
-            if self.labels[idx] == 1
-        }
-        
-        # For each phrase, find documents containing it among relevant labeled docs (D_p)
-        phrase_to_docs = defaultdict(set)
-        for phrase in self.selected_phrases:
-            for doc_idx, doc in relevant_labeled_docs.items():
-                if phrase in doc:
-                    phrase_to_docs[phrase].add(doc_idx)
-
-        # For each cluster, find related documents (D_ci) - equation 12
         cluster_to_docs = defaultdict(set)
-        for cluster_id, phrases in self.community_to_phrases.items():
+        for cluster_id, phrases in community_to_phrases.items():
             for phrase in phrases:
-                cluster_to_docs[cluster_id].update(phrase_to_docs[phrase])
+                for doc_idx in known_indices:
+                    if phrase in self.dataset.texts[doc_idx]:
+                        cluster_to_docs[cluster_id].add(doc_idx)
 
-        # Select clusters based on threshold (C_s) - equation 11
-        threshold = alpha * len(labeled_docs) 
-        selected_clusters = {
-            cluster_id for cluster_id, docs in cluster_to_docs.items()
-            if len(docs) > threshold
-        }
+        threshold = alpha * len(known_indices)
+        return {cluster_id for cluster_id, docs in cluster_to_docs.items() 
+                if len(docs) > threshold}
+
+    def _calculate_feature_values(self, selected_features, communities):
+        """Calculate feature values using precomputed embeddings"""
+        feature_values = {}
         
-        # Store results
-        self.selected_cluster_features = selected_clusters
-        self.cluster_to_docs = dict(cluster_to_docs)
+        # Group phrases by community
+        community_to_phrases = defaultdict(list)
+        for phrase, comm in communities.items():
+            if comm in selected_features:
+                community_to_phrases[comm].append(phrase)
         
-        # Print statistics
-        print(f"Number of clusters selected as features: {len(selected_clusters)}")
-        print(f"Total number of clusters: {len(self.community_to_phrases)}")
+        # Calculate centroids using precomputed embeddings
+        community_centroids = {}
+        for comm_id, phrases in community_to_phrases.items():
+            comm_embeddings = [self.embeddings[p] for p in phrases if p in self.embeddings]
+            if comm_embeddings:
+                community_centroids[comm_id] = torch.stack(comm_embeddings).mean(dim=0)
         
-        return selected_clusters
+        # Calculate features for all docs
+        for doc_idx, doc_text in enumerate(self.dataset.texts):
+            doc_features = []
+            for cluster_id in sorted(selected_features):
+                cluster_phrases = community_to_phrases[cluster_id]
+                max_sim = 0.0
+                
+                for phrase in cluster_phrases:
+                    if phrase in doc_text and phrase in self.embeddings:
+                        phrase_emb = self.embeddings[phrase]
+                        centroid = community_centroids[cluster_id]
+                        sim = cosine_similarity(
+                            phrase_emb.unsqueeze(0),
+                            centroid.unsqueeze(0)
+                        ).item()
+                        max_sim = max(max_sim, sim)
+                        
+                doc_features.append(max_sim)
+            
+            feature_values[doc_idx] = doc_features
+            
+        return feature_values
 
     def train_phrase_classifier(self):
-        """
-        Train Random Forest classifier on phrase-level features and get predictions.
-        Returns ranked indices of unknown documents.
-        """
+        """Train classifier and get phrase-level ranking"""
         from sklearn.ensemble import RandomForestClassifier
         
-        # Get feature vectors and labels for training
-        X_train = [self.feature_values[idx] for idx in self.known_indices]
-        y_train = [self.labels[idx] for idx in self.known_indices]
+        # Get features for training
+        X_train = [self.feature_values[idx] for idx in self.dataset.known_indices]
+        y_train = [self.dataset.labels[idx] for idx in self.dataset.known_indices]
+        X_unknown = [self.feature_values[idx] for idx in self.dataset.unknown_indices]
         
-        # Get feature vectors for unknown documents
-        X_unknown = [self.feature_values[idx] for idx in self.unknown_indices]
-        
-        # Train classifier and get predictions
         rf = RandomForestClassifier(n_estimators=100)
         rf.fit(X_train, y_train)
-        predictions = rf.predict_proba(X_unknown)[:, 1]  # Get probability of positive class
+        predictions = rf.predict_proba(X_unknown)[:, 1]
         
-        # Return sorted indices (highest probability first)
         return np.argsort(-predictions)
-    
-    def get_combined_ranking(self, vae_ranking):
-        """
-        Combine VAE and phrase-level rankings using mean reciprocal rank.
-        Returns: Final sorted indices.
-        """
-        # Get phrase-level ranking
-        phrase_ranking = self.train_phrase_classifier()
-        
-        # Calculate MRR scores
-        scores = np.zeros(len(self.unknown_indices))
-        for idx in range(len(self.unknown_indices)):
-            # Add reciprocal ranks (1-based ranking)
-            scores[idx] = (1.0/(vae_ranking[idx] + 1) + 
-                        1.0/(phrase_ranking[idx] + 1))
-        
-        # Return indices sorted by combined score
-        return np.argsort(-scores)
