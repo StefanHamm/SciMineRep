@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score
 import numpy as np
 from dataloader import newReviewDataset,ReviewDataset
+from dataloader_phrase import PhraseLevelPipeline, PhraselevelDataloader
 from vae_model import VAE
 from utils import set_seed, set_device
 import os
@@ -82,8 +83,40 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     unknown_precision, unknown_recall, unknown_f1 = calculate_metrics(unknown_predictions,unknown_labels, threshold)
     print(f"Unknown Precision: {unknown_precision}, Recall: {unknown_recall}, F1-Score: {unknown_f1}")
 
+def ranking_ensemble(r1_d, r2_d):
+    """
+    Combine two ranking lists using mean reciprocal rank scores.
+    
+    Args:
+        r1_d: First ranking list [r^1_d] from VAE model (numpy array of indices)
+        r2_d: Second ranking list [r^2_d] from phrase-level features (numpy array of indices)
+        
+    Returns:
+        numpy.ndarray: Array of indices in their final ranking order
+    """
+    # Initialize score dictionary
+    final_scores = {}
+    
+    # Calculate MRR scores for each document (equation 17)
+    for doc_idx in r1_d:  # Iterate through all document indices
+        # Get positions in each ranking (adding 1 since rankings are 1-based)
+        rank1 = np.where(r1_d == doc_idx)[0][0] + 1
+        rank2 = np.where(r2_d == doc_idx)[0][0] + 1
+        
+        # Calculate MRR score: sum of reciprocal ranks (equation 17)
+        mrr = (1/rank1) + (1/rank2)
+        final_scores[doc_idx] = mrr
+    
+    # Sort document indices by final score in descending order
+    ranked_indices = sorted(final_scores.keys(), key=lambda x: final_scores[x], reverse=True)
+    
+    return np.array(ranked_indices)
+
+#TODO:
+#     - Finish the ranking function (add some print statements etc..)
+#     - Implement evaulation
 def main():
-     # Settings
+    # Settings
     data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
     #data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
     set_seed(999)
@@ -102,7 +135,9 @@ def main():
     vae = VAE(input_dim, latent_dim, beta=0.1).to(deviceType)
     optimizer = optim.Adam(vae.parameters(), lr=1e-4)
     
-    
+    #Phrase level settings
+    phrase_dataset = PhraselevelDataloader(data_path, device=deviceType)
+
     # Iterative training loop
     while len(review_dataset.unknown_indices) > 0:
         print("************************")
@@ -115,8 +150,8 @@ def main():
         train_vae(vae, train_loader, optimizer, epochs=epochs, device=device)
 
         # Get predictions and rank documents
-        unknown_embeddings,unknown_labels = review_dataset.get_unknown_data()
-        ranked_indices,predictions = rank_papers(vae, unknown_embeddings, device)
+        unknown_embeddings, unknown_labels = review_dataset.get_unknown_data()
+        ranked_indices, predictions = rank_papers(vae, unknown_embeddings, device)
         
         #info
         print("Highest rankd index: ",ranked_indices[0])
@@ -125,7 +160,19 @@ def main():
         # Select the highest ranked document
         selected_index = ranked_indices[0]
         
-    
+        # Get pseudo-negative documents and unknown_indices and run phrase level pipeline
+        threshold_index = int(len(ranked_indices) * 0.7)  #plp needs indices from the worst 30% of unknow_texts as 0 labeled documents (pseudonegative docs)
+        pseudonegative_unknown_indices = ranked_indices[threshold_index:]
+        unknown_indices = review_dataset.unknown_indices
+        plp = PhraseLevelPipeline(unknown_indices, pseudonegative_unknown_indices, phrase_dataset, device)
+        rfc_ranking = plp.pipeline()
+
+        if rfc_ranking is None:
+            print("No positive documents in the training set, RFC was not trained.")
+        else:        
+            final_ranking = ranking_ensemble(ranked_indices, rfc_ranking)
+            print("Final ranking: ",final_ranking)
+
         # Update the training set with human feedback (simulate by using ground truth label)
         review_dataset.update_train_set(selected_index)
 
