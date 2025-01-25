@@ -135,16 +135,6 @@ async def get_openalex_metadata(session, openalex_id, semaphores):
 async def preprocess_data(session, paper, semaphores):
     title, abstract = None, None
 
-    # Try DOI via CrossRef
-    if pd.notna(paper.get("doi")):
-        title_cr, abstract_cr = await get_crossref_metadata(
-            session, paper["doi"], semaphores
-        )
-        if title_cr:
-            title = title_cr
-        if abstract_cr and abstract_cr != "No abstract available":
-            abstract = abstract_cr
-
     # Try PubMed via PMID
     if pd.notna(paper.get("pmid")) and (not title or not abstract):
         title_pm, abstract_pm = await get_pubmed_metadata(
@@ -154,6 +144,16 @@ async def preprocess_data(session, paper, semaphores):
             title = title_pm
         if not abstract and abstract_pm and abstract_pm != "No abstract available":
             abstract = abstract_pm
+    
+    # Try DOI via CrossRef
+    if pd.notna(paper.get("doi")):
+        title_cr, abstract_cr = await get_crossref_metadata(
+            session, paper["doi"], semaphores
+        )
+        if title_cr:
+            title = title_cr
+        if abstract_cr and abstract_cr != "No abstract available":
+            abstract = abstract_cr
 
     # Try OpenAlex via OpenAlex ID
     if pd.notna(paper.get("openalex_id")) and (not title or not abstract):
