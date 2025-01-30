@@ -45,6 +45,11 @@ semaphores = {
     "crossref": asyncio.Semaphore(RATE_LIMITS["crossref"]["limit"]),
 }
 
+# function for semaphores how many papers to process at a time
+semaphoresSyncProcess = {
+    "papers": asyncio.Semaphore(10)
+}
+
 # Asynchronous fetch function
 async def fetch(service, session, url, semaphores):
     semaphore = semaphores[service]
@@ -101,7 +106,7 @@ async def get_pubmed_metadata(session, pmid, semaphores):
             logger.warning(f"No abstract found for PMID: {pmid} with URL: {url}")
         else:
             abstract = article_abstract
-
+        logger.debug(f"Got title and abstract for PMID: {pmid} with URL: {url}")
         return title, abstract
         
     else:
@@ -132,44 +137,46 @@ async def get_openalex_metadata(session, openalex_id, semaphores):
     else:
         return None, None
 
-async def preprocess_data(session, paper, semaphores):
+async def preprocess_data(session, paper, semaphores,semaphoressyn):
     title, abstract = None, None
+    sem = semaphoressyn["papers"]
 
-    # Try PubMed via PMID
-    if pd.notna(paper.get("pmid")) and (not title or not abstract):
-        title_pm, abstract_pm = await get_pubmed_metadata(
-            session, paper["pmid"].split("/")[-1], semaphores
-        )
-        if not title and title_pm:
-            title = title_pm
-        if not abstract and abstract_pm and abstract_pm != "No abstract available":
-            abstract = abstract_pm
-    
-    # Try DOI via CrossRef
-    if pd.notna(paper.get("doi")):
-        title_cr, abstract_cr = await get_crossref_metadata(
-            session, paper["doi"], semaphores
-        )
-        if title_cr:
-            title = title_cr
-        if abstract_cr and abstract_cr != "No abstract available":
-            abstract = abstract_cr
+    async with sem:
+        # Try PubMed via PMID
+        if pd.notna(paper.get("pmid")) and (not title or not abstract):
+            title_pm, abstract_pm = await get_pubmed_metadata(
+                session, paper["pmid"].split("/")[-1], semaphores
+            )
+            if not title and title_pm:
+                title = title_pm
+            if not abstract and abstract_pm and abstract_pm != "No abstract available":
+                abstract = abstract_pm
+        
+        # Try DOI via CrossRef
+        if pd.notna(paper.get("doi")):
+            title_cr, abstract_cr = await get_crossref_metadata(
+                session, paper["doi"], semaphores
+            )
+            if title_cr:
+                title = title_cr
+            if abstract_cr and abstract_cr != "No abstract available":
+                abstract = abstract_cr
 
-    # Try OpenAlex via OpenAlex ID
-    if pd.notna(paper.get("openalex_id")) and (not title or not abstract):
-        title_oa_id, abstract_oa_id = await get_openalex_metadata(
-            session, paper["openalex_id"].split("/")[-1], semaphores
-        )
-        if not title and title_oa_id:
-            title = title_oa_id
-        if not abstract and abstract_oa_id and abstract_oa_id != "No abstract available":
-            abstract = abstract_oa_id
+        # Try OpenAlex via OpenAlex ID
+        if pd.notna(paper.get("openalex_id")) and (not title or not abstract):
+            title_oa_id, abstract_oa_id = await get_openalex_metadata(
+                session, paper["openalex_id"].split("/")[-1], semaphores
+            )
+            if not title and title_oa_id:
+                title = title_oa_id
+            if not abstract and abstract_oa_id and abstract_oa_id != "No abstract available":
+                abstract = abstract_oa_id
 
-    # Return a dictionary if metadata was found
-    if title and abstract:
-        return {"title": title, "abstract": abstract, "label": paper["label_included"]}
-    else:
-        return None
+        # Return a dictionary if metadata was found
+        if title and abstract:
+            return {"title": title, "abstract": abstract, "label": paper["label_included"]}
+        else:
+            return None
 
 # Function to clone the dataset repository
 def clone_dataset_repo():
@@ -202,7 +209,7 @@ def clone_dataset_repo():
         shutil.rmtree(repodir, ignore_errors=True)
         sp.run(["git", "clean", "-fdx", repodir])
 
-async def process_file(filename, semaphores):
+async def process_file(filename, semaphores,semaphoressyn):
     try:
         df = pd.read_csv(os.path.join(datasetPath, filename), encoding="ISO-8859-1")
     except UnicodeDecodeError as e:
@@ -213,12 +220,13 @@ async def process_file(filename, semaphores):
     logger.info(f"Processing {filename}")
     async with aiohttp.ClientSession() as session:
         tasks = [
-            preprocess_data(session, paper, semaphores)
+            preprocess_data(session, paper, semaphores,semaphoressyn)
             for _, paper in df.iterrows()
             if pd.notna(paper.get("label_included"))
         ]
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        #results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await tqdm_async.gather(*tasks, desc=f"Processing {filename}")
         for result in results:
             if isinstance(result, Exception):
                 logger.error(f"Task failed with exception: {result}")
@@ -255,7 +263,12 @@ async def download_data():
                         "eutils": asyncio.Semaphore(RATE_LIMITS["eutils"]["limit"]),
                         "crossref": asyncio.Semaphore(RATE_LIMITS["crossref"]["limit"]),
                     }
-                    await process_file(file, semaphores)
+                    
+                    semaphoresSyncProcess = {
+                        "papers": asyncio.Semaphore(10)
+                    }
+                    
+                    await process_file(file, semaphores,semaphoresSyncProcess)
             except Exception as e:
                 logger.error(f"Error processing {file}: {e}")
 
