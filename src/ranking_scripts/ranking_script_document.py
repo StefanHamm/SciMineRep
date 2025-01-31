@@ -10,6 +10,10 @@ from utils import set_seed, set_device
 import os
 import random
 import math
+import matplotlib.pyplot as plt
+
+from scores import calculate_wss, calculate_rrf
+
 
 #check if cuda is available
 deviceType = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,6 +73,38 @@ def calculate_metrics(predictions, labels, threshold=0.5):
     
     return precision, recall, f1_score
 
+def calculate_metrics_top_k(predictions, labels):
+    """
+    Calculates precision, recall, and f1-score for given predictions and labels,
+    assuming the top-k predictions are positive, where k is the number of true
+    relevant documents.
+    """
+    k = np.sum(labels == 1)  # Number of true relevant documents
+    if k == 0:
+        return 0, 0, 0  # Handle case where there are no relevant documents left
+
+    # Get indices of top-k predictions
+    top_k_indices = np.argsort(-predictions)[:k]
+
+    # Create predicted labels based on top-k indices
+    predicted_labels = np.zeros_like(predictions)
+    predicted_labels[top_k_indices] = 1
+
+    true_positives = np.sum((predicted_labels == 1) & (labels == 1))
+    false_positives = np.sum((predicted_labels == 1) & (labels == 0))
+    false_negatives = np.sum((predicted_labels == 0) & (labels == 1))
+
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    return precision, recall, f1_score
+
+
+reached_10 = False
+reached_wss95 = False
+reached_wss85 = False
+
 def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     
     #Calculate metrics for the training set
@@ -76,12 +112,52 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     train_predictions = evaluate_vae(model, train_embeddings, device)
     train_precision, train_recall, train_f1 = calculate_metrics(train_predictions, train_labels, threshold)
     print(f"Train Precision: {train_precision}, Recall: {train_recall}, F1-Score: {train_f1}")
-
+    #print(f"Found {np.sum(train_labels)} valid papers")
     #Calculate metrics for the unknown set
     unknown_embeddings,unknown_labels = review_dataset.get_unknown_data()
     unknown_predictions = evaluate_vae(model, unknown_embeddings, device)
-    unknown_precision, unknown_recall, unknown_f1 = calculate_metrics(unknown_predictions,unknown_labels, threshold)
+    #unknown_precision, unknown_recall, unknown_f1 = calculate_metrics(unknown_predictions,unknown_labels, threshold)
+    unknown_precision, unknown_recall, unknown_f1 = calculate_metrics_top_k(unknown_predictions,unknown_labels)
+    #print(f"Unkonw papers still to be found: {np.sum(unknown_labels)}")
     print(f"Unknown Precision: {unknown_precision}, Recall: {unknown_recall}, F1-Score: {unknown_f1}")
+    
+    global reached_10
+    global reached_wss95
+    global reached_wss85
+    number_of_relevant_docs = sum(train_labels)+sum(unknown_labels)
+    #calculate rrf @10
+    # if training len is 10 % of combined length of training and unknown set
+    if len(train_embeddings) >= int(0.1*(len(train_embeddings)+len(unknown_embeddings))) and not reached_10:
+        reached_10 = True
+        
+        rrf_score = sum(train_labels)/number_of_relevant_docs
+        print(f"RRF @10: {rrf_score}")
+        #write the score to a file
+        with open("scores.txt", "a") as f:
+            f.write(f"RRF@10 = {rrf_score}\n")
+            
+    
+    
+    if sum(train_labels)>= 0.95 * number_of_relevant_docs and not reached_wss95:
+        reached_wss95 = True
+        wss_score = 1 - (len(train_labels)/number_of_relevant_docs)
+        print(f"WSS @95: {wss_score}")
+        with open("scores.txt", "a") as f:
+            f.write(f"WSS@95 = {wss_score}\n")
+    
+    if sum(train_labels)>= 0.85 * number_of_relevant_docs and not reached_wss85:
+        reached_wss85 = True
+        wss_score = 1 - (len(train_labels)/number_of_relevant_docs)
+        print(f"WSS @85: {wss_score}")
+        with open("scores.txt", "a") as f:
+            f.write(f"WSS@85 = {wss_score}\n")
+        
+    
+    #calculate combined prcisions and recall
+    # cobined_predicitons = np.concatenate((train_predictions,unknown_predictions))
+    # combined_labels = np.concatenate((train_labels,unknown_labels))
+    # combined_precision, combined_recall, combined_f1 = calculate_metrics(cobined_predicitons,combined_labels, threshold)
+    # print(f"Combined Precision: {combined_precision}, Recall: {combined_recall}, F1-Score: {combined_f1}")
 
 def ranking_ensemble(r1_d, r2_d):
     """
@@ -96,6 +172,10 @@ def ranking_ensemble(r1_d, r2_d):
     """
     # Initialize score dictionary
     final_scores = {}
+    
+    #calculate recall at k for both rankings
+    
+    
     
     # Calculate MRR scores for each document (equation 17)
     for doc_idx in r1_d:  # Iterate through all document indices
@@ -119,8 +199,20 @@ def main():
     # Settings
     data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
     #data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
-    set_seed(999)
+    
+    seed = 999
+    set_seed(seed)
+    
     device = set_device()
+    
+    with open("scores.txt", "a") as f:
+        f.write(f"Scores for {data_path}\n")
+        f.write(f"Seed = {seed}\n")
+        f.write(f"************************\n")
+    
+    wss_scores = []
+    rrf_scores = []
+    iteration_numbers = []
     
     latent_dim = 128
     initial_train_size = 1
@@ -129,7 +221,7 @@ def main():
     
     # Initialize Dataset
     #review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter', create_tensors=True,device=deviceType)
-    review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType)
+    review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType,seed=seed)
     #initialize model
     input_dim = review_dataset.embeddings.shape[1]
     vae = VAE(input_dim, latent_dim, beta=0.1).to(deviceType)
@@ -137,7 +229,7 @@ def main():
     
     #Phrase level settings
     phrase_dataset = PhraselevelDataloader(data_path, device=deviceType)
-
+    iteration = 0
     # Iterative training loop
     while len(review_dataset.unknown_indices) > 0:
         print("************************")
@@ -178,6 +270,17 @@ def main():
 
         # Evaluate (optional, do not use for training)
         evaluate_per_iteration(vae, review_dataset, device)
+        
+        # Calculate WSS and RRF every 20 iterations
+        
+        y_true = np.array([review_dataset.labels[i] for i in ranked_indices])
+        y_pred = (predictions[ranked_indices] >= 0.5).astype(int)  # Convert to binary predictions
+        y_scores = predictions[ranked_indices]
+        
+        
+        
+        
+        iteration += 1
         
 
 if __name__ == '__main__':

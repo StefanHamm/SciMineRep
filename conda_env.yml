@@ -15,3 +15,4 @@ dependencies:
       - transformers==4.48.0
       - synergy_dataset
       - aiohttp
+      - python-louvain

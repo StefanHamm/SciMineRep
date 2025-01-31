@@ -24,9 +24,17 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
 
 class ReviewDataset(Dataset):
-    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0):
+    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0,seed=42):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
+        
+        
+        #shuffle data according to seed
+        np.random.seed(seed)
+        shuffle_indices = np.random.permutation(len(self.texts))
+        self.texts = [self.texts[i] for i in shuffle_indices]
+        self.labels = [self.labels[i] for i in shuffle_indices]
+        
         self.return_embedding = return_embedding
 
         # Initialize embeddings based on return_embedding
@@ -284,9 +292,16 @@ class ReviewDataset(Dataset):
 
 
 class newReviewDataset(Dataset):
-    def __init__(self, data_path, initial_train_size=1, return_embedding='specter', use_pseudo_for_scibert=False, start_idx=0,device='cpu'):
+    def __init__(self, data_path, initial_train_size=1, return_embedding='specter', use_pseudo_for_scibert=False, start_idx=0,device='cpu',seed=42):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
+        
+         #shuffle data according to seed
+        np.random.seed(seed)
+        shuffle_indices = np.random.permutation(len(self.texts))
+        self.texts = [self.texts[i] for i in shuffle_indices]
+        self.labels = [self.labels[i] for i in shuffle_indices]
+        
         self.return_embedding = return_embedding
         self.use_pseudo_for_scibert = use_pseudo_for_scibert
         self.device = device
