@@ -10,6 +10,7 @@ dependencies:
   - nltk
   - requests
   - beautifulsoup4
+  - gensim
   - pip:
       - transformers==4.48.0
       - synergy_dataset
