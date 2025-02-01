@@ -24,16 +24,16 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
 
 class ReviewDataset(Dataset):
-    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0,seed=42):
+    def __init__(self, data_path, initial_train_size=1, return_embedding='specter',use_pseudo_for_scibert = False,start_idx=0,seed=42,shuffle = False):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
         
-        
-        #shuffle data according to seed
-        np.random.seed(seed)
-        shuffle_indices = np.random.permutation(len(self.texts))
-        self.texts = [self.texts[i] for i in shuffle_indices]
-        self.labels = [self.labels[i] for i in shuffle_indices]
+        if shuffle:
+            #shuffle data according to seed
+            np.random.seed(seed)
+            shuffle_indices = np.random.permutation(len(self.texts))
+            self.texts = [self.texts[i] for i in shuffle_indices]
+            self.labels = [self.labels[i] for i in shuffle_indices]
         
         self.return_embedding = return_embedding
 
