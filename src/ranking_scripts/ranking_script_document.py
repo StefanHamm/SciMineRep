@@ -12,7 +12,6 @@ import random
 import math
 import matplotlib.pyplot as plt
 
-from scores import calculate_wss, calculate_rrf
 
 
 #check if cuda is available

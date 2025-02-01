@@ -280,7 +280,8 @@ class PhraseLevelPipeline(Dataset):
         graph = self._construct_phrase_graph(selected_phrases, selected_embeddings)
         # print(graph)
         relevant_texts = self._get_relevant_texts(train_texts, train_labels)
-        community_phrases, selected_communities = self._detect_phrase_communities(train_texts, train_labels, graph, 1, relevant_texts)
+        relevant_indices = [i for i, label in enumerate(train_labels) if label == 1]
+        community_phrases, selected_communities = self._detect_phrase_communities(train_texts, train_labels, graph, 0.1, relevant_indices)
         # print(f'community_phrases {community_phrases}')
         # print(f'selected_communities {selected_communities}')
         selected_phrases = self._get_selected_phrases(community_phrases, selected_communities)
@@ -387,7 +388,7 @@ class PhraseLevelPipeline(Dataset):
         
         return G
 
-    def _detect_phrase_communities(self, documents, labels, graph, threshold = 0.1, relevant_docs = None):
+    def _detect_phrase_communities(self, documents, labels, graph, threshold = 0.5, relevant_docs = None):
         """
         Implements community detection and feature selection as described in the paper.
         """
@@ -541,11 +542,11 @@ class PhraseLevelPipeline(Dataset):
         clf = RandomForestClassifier(n_estimators=100, random_state=42)
         clf.fit(feature_values, all_labels)
         
-        return clf, feature_values
+        return clf
 
     def _get_phrase_rankings(self, rfc, embeddings, unique_phrases, community_phrases, selected_communities, unknown_texts, pseudonegative_texts):
         """
-        Generate phrase-level feature-based rankings using the trained Random Forest classifier for non-pseudonegative unknown documents.
+        Generate phrase-level feature-based rankings using the trained Random Forest classifier.
 
         Args:
             rfc: Trained Random Forest classifier
@@ -553,15 +554,12 @@ class PhraseLevelPipeline(Dataset):
             unique_phrases: List of all phrases
             community_phrases: Dict mapping community IDs to sets of phrases
             selected_communities: Set of selected community IDs
-            unknown_texts: List of unknown documents
+            unknown_texts: List of ALL unknown documents (not just non-pseudonegative)
             pseudonegative_texts: List of pseudonegative documents
 
         Returns:
-            numpy.ndarray: Array of indices giving the ranking order [r^2_d] for non-pseudonegative unknown documents
+            numpy.ndarray: Array of indices giving the ranking order for ALL unknown documents
         """
-        # Determine the non-pseudonegative unknown texts
-        non_pseudonegative_unknown_texts = [text for text in unknown_texts if text not in pseudonegative_texts]
-
         # Create mapping from phrases to their embeddings
         phrase_to_embedding = {phrase: emb for phrase, emb in zip(unique_phrases, embeddings)}
 
@@ -569,11 +567,9 @@ class PhraseLevelPipeline(Dataset):
         community_centroids = {}
         for community_id in selected_communities:
             phrases_in_community = community_phrases[community_id]
-
-            # Calculate |D_ci| and weighted embeddings
             D_ci = set()
             for phrase in phrases_in_community:
-                for text in non_pseudonegative_unknown_texts:
+                for text in unknown_texts:  # Use all unknown texts
                     if phrase in text:
                         D_ci.add(text)
             D_ci_size = len(D_ci)
@@ -583,7 +579,7 @@ class PhraseLevelPipeline(Dataset):
 
             for phrase in phrases_in_community:
                 if phrase in phrase_to_embedding:
-                    D_p = sum(1 for text in non_pseudonegative_unknown_texts if phrase in text)
+                    D_p = sum(1 for text in unknown_texts if phrase in text)  # Count in all unknown texts
 
                     if D_ci_size > 0:
                         weight = D_p / D_ci_size
@@ -598,16 +594,15 @@ class PhraseLevelPipeline(Dataset):
             if total_weighted_embedding is not None and total_weight > 0:
                 community_centroids[community_id] = total_weighted_embedding / total_weight
 
-        # Calculate feature values for prediction
+        # Calculate feature values for prediction for ALL unknown documents
         feature_values = []
-        for text in non_pseudonegative_unknown_texts:
+        for text in unknown_texts:  # Process all unknown texts
             document_features = []
-
             for community_id in sorted(selected_communities):
                 community_centroid = community_centroids[community_id]
                 max_similarity = 0.0
 
-                for phrase in phrases_in_community:
+                for phrase in community_phrases[community_id]:
                     if phrase in text and phrase in phrase_to_embedding:
                         phrase_emb = torch.tensor(phrase_to_embedding[phrase])
                         similarity = torch.nn.functional.cosine_similarity(
@@ -617,11 +612,13 @@ class PhraseLevelPipeline(Dataset):
                         max_similarity = max(max_similarity, similarity)
 
                 document_features.append(max_similarity)
-
             feature_values.append(document_features)
 
         # Get predictions and rankings
+        if not feature_values:  # If no features were calculated
+            return np.array([])
+            
         predictions = rfc.predict_proba(feature_values)[:, 1]  # Get probability of positive class
         ranked_indices = np.argsort(-predictions)  # Sort in descending order
 
-        return ranked_indices  # Return rankings for non-pseudonegative unknown documents
+        return ranked_indices  # Return rankings for ALL unknown documents
