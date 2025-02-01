@@ -252,18 +252,12 @@ class PhraselevelDataloader(Dataset):
         return ordered_embeddings
 
 
-# TODO: 
-#      - Check why selected_communities is empty
-#      - create autophrase if the preprocessed documents are done
-#      - Precompute embeddings when we have the autophrase and set checks in the dataloades so it loads the correct file based on an input string to the dataloader
-#      - Clean up print statements when bugs are fixed
 class PhraseLevelPipeline(Dataset):
     def __init__(self, unknown_indices, pseudonegative_unknown_indices, phrase_dataset: PhraselevelDataloader, device='cpu'):
         self.unknown_indices = unknown_indices
         self.pseudonegative_unknown_indices = pseudonegative_unknown_indices
         self.ds = phrase_dataset
         self.device = device
-        print(f"Phrase Level Pipeline Initialized - Number of unknown_indices: {len(self.unknown_indices)}")
 
     def pipeline(self):
         #Load data from ds and split into unknown and known
@@ -281,19 +275,19 @@ class PhraseLevelPipeline(Dataset):
         # print(graph)
         relevant_texts = self._get_relevant_texts(train_texts, train_labels)
         relevant_indices = [i for i, label in enumerate(train_labels) if label == 1]
-        community_phrases, selected_communities = self._detect_phrase_communities(train_texts, train_labels, graph, 0.1, relevant_indices)
+        community_phrases, selected_communities = self._detect_phrase_communities(train_texts, train_labels, graph, 0.5, relevant_indices)
         # print(f'community_phrases {community_phrases}')
         # print(f'selected_communities {selected_communities}')
         selected_phrases = self._get_selected_phrases(community_phrases, selected_communities)
         # print(f'selected_phrases {selected_phrases}')
-        print("Input data:")
-        print("  embeddings shape:", len(embeddings))
-        print("  unique_phrases length:", len(unique_phrases))
-        print("  community_phrases keys:", community_phrases.keys())
-        print("  selected_communities:", selected_communities)
-        print("  train_texts length:", len(train_texts))
-        print("  train_labels length:", len(train_labels))
-        print("  pseudonegative_texts length:", len(pseudonegative_texts))
+        # print("Input data:")
+        # print("  embeddings shape:", len(embeddings))
+        # print("  unique_phrases length:", len(unique_phrases))
+        # print("  community_phrases keys:", community_phrases.keys())
+        # print("  selected_communities:", selected_communities)
+        # print("  train_texts length:", len(train_texts))
+        # print("  train_labels length:", len(train_labels))
+        # print("  pseudonegative_texts length:", len(pseudonegative_texts))
         RFC = self._train_random_forest(embeddings, unique_phrases, community_phrases, selected_communities, train_texts, train_labels, pseudonegative_texts)
         if RFC is None:
             print("Random Forest classifier not trained due to no selected communities.")

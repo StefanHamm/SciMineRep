@@ -40,3 +40,22 @@ Seed = 999
 Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
 Seed = 999
 ************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+Scores for D:\TUWien\Semester_II\exp\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+************************
+RRF@10 = 0.5040322580645161
