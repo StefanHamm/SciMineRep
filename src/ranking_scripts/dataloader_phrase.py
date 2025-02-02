@@ -138,8 +138,8 @@ class PhraselevelDataloader(Dataset):
         except LookupError:
             nltk.download('punkt')
             
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = model.to(device)
+        #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = model.to(self.device)
         model.eval()
         
         # Initialize storage for all mentions of each phrase
@@ -195,7 +195,7 @@ class PhraselevelDataloader(Dataset):
                     # 1. Get content feature (x_l_p)
                     inputs = tokenizer(sentence, return_tensors="pt", 
                                     truncation=True, max_length=512)
-                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
                     
                     with torch.no_grad():
                         outputs = model(**inputs)
@@ -220,7 +220,7 @@ class PhraselevelDataloader(Dataset):
                     masked_sentence = sentence.replace(phrase, tokenizer.mask_token)
                     masked_inputs = tokenizer(masked_sentence, return_tensors="pt",
                                         truncation=True, max_length=512)
-                    masked_inputs = {k: v.to(device) for k, v in masked_inputs.items()}
+                    masked_inputs = {k: v.to(self.device) for k, v in masked_inputs.items()}
                     
                     with torch.no_grad():
                         masked_outputs = model(**masked_inputs)
