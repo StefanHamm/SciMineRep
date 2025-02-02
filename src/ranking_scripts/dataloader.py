@@ -299,9 +299,9 @@ class newReviewDataset(Dataset):
         #shuffle data according to seed
         if shuffle:
             np.random.seed(seed)
-            shuffle_indices = np.random.permutation(len(self.texts))
-            self.texts = [self.texts[i] for i in shuffle_indices]
-            self.labels = [self.labels[i] for i in shuffle_indices]
+            self.shuffle_indices = np.random.permutation(len(self.texts))
+            self.texts = [self.texts[i] for i in self.shuffle_indices]
+            self.labels = [self.labels[i] for i in self.shuffle_indices]
         
         self.return_embedding = return_embedding
         self.use_pseudo_for_scibert = use_pseudo_for_scibert
@@ -334,6 +334,11 @@ class newReviewDataset(Dataset):
         # Unknown data
         self.unknown_embeddings = self.embeddings[self.unknown_indices]
         self.unknown_labels = self.labels[self.unknown_indices]
+        
+    def get_shuffle_indices(self):
+        return self.shuffle_indices
+        
+    
 
     def _load_data(self):
         data = pd.read_csv(self.data_path)

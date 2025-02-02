@@ -196,10 +196,12 @@ def ranking_ensemble(r1_d, r2_d):
 #     - Implement evaulation
 def main():
     # Settings
-    data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
+    #data_path = os.path.join(dir_path, './../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv')
+    data_path = os.path.join(dir_path, './../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv')
+    #data_path = os.path.join(dir_path, './../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv')
     #data_path = os.path.join(dir_path, './../../data/example_data_processed/example_data.csv')
     
-    seed = 999
+    seed = 49681
     set_seed(seed)
     
     device = set_device()
@@ -220,14 +222,19 @@ def main():
     
     # Initialize Dataset
     #review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter', create_tensors=True,device=deviceType)
-    review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType,seed=seed)
+    review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType,shuffle=True,seed=seed)
+    
+    
     #initialize model
     input_dim = review_dataset.embeddings.shape[1]
     vae = VAE(input_dim, latent_dim, beta=0.1).to(deviceType)
     optimizer = optim.Adam(vae.parameters(), lr=1e-4)
     
     #Phrase level settings
-    phrase_dataset = PhraselevelDataloader(data_path, device=deviceType)
+    
+    indices = review_dataset.get_shuffle_indices()
+    phrase_dataset = PhraselevelDataloader(data_path,deviceType,indices)
+    
     iteration = 0
     # Iterative training loop
     while len(review_dataset.unknown_indices) > 0:
@@ -235,8 +242,8 @@ def main():
         print(f"Train size: {len(review_dataset.train_embeddings)}, Unknonwn Size: {len(review_dataset.unknown_indices)}")
     
         # DataLoaders
-        train_loader = DataLoader(review_dataset, batch_size=batch_size, shuffle=True)
-    
+        train_loader = DataLoader(review_dataset, batch_size=batch_size)
+        
         # Train the VAE
         train_vae(vae, train_loader, optimizer, epochs=epochs, device=device)
 

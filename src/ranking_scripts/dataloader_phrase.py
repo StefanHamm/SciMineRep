@@ -40,9 +40,12 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
 
 class PhraselevelDataloader(Dataset):
-    def __init__(self, data_path, device='cpu'):
+    def __init__(self, data_path, device='cpu',shuffel_indices=None):
         self.data_path = data_path
         self.texts, self.labels = self._load_data()
+        if shuffel_indices is not None:
+            self.texts = [self.texts[i] for i in shuffel_indices]
+            self.labels = [self.labels[i] for i in shuffel_indices]
         self.device = device
         
         #print count of 0 and 1 labels sum(labels),len(labels)-sum(labels)
