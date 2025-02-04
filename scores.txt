@@ -45,3 +45,53 @@ Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 
 Seed = 42
 ************************
 RRF@10 = 0.23
+WSS@85 = 0.49753694581280783
+WSS@95 = 0.35139573070607555
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 999
+************************
+RRF@10 = 0.25
+WSS@85 = 0.6346469622331692
+WSS@95 = 0.4014778325123153
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 49681
+************************
+RRF@10 = 0.22
+WSS@85 = 0.6133004926108374
+WSS@95 = 0.3538587848932676
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv
+Seed = 42
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 49681
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv
+Seed = 42
+************************
+RRF@10 = 0.21212121212121213
+WSS@85 = 0.5546742209631728
+WSS@95 = 0.45099150141643063
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv
+Seed = 999
+************************
+RRF@10 = 0.1414141414141414
+WSS@85 = 0.3603399433427762
+WSS@95 = 0.19206798866855523
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv
+Seed = 49681
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Kwok_2020_ids.csv_processed.csv
+Seed = 49681
+************************
+RRF@10 = 0.18181818181818182
+WSS@85 = 0.42152974504249296
+WSS@95 = 0.23852691218130306
