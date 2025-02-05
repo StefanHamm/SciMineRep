@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python=3.9
   - pandas
+  - numpy==1.26.4
   - scikit-learn 
   - pytorch
   - seaborn
