@@ -1,19 +1,19 @@
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score
 import numpy as np
 from dataloader import newReviewDataset
 from dataloader_phrase import PhraseLevelPipeline, PhraselevelDataloader
 from vae_model import VAE
 from utils import set_seed, set_device
 import os
-import random
-import math
 import matplotlib.pyplot as plt
 import logging
 from tqdm import tqdm
 import itertools
+#import empty cache from cuda
+import gc
+
 
 #Configure logger
 logging.basicConfig(
@@ -138,6 +138,7 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     global reached_wss95
     global reached_wss85
     number_of_relevant_docs = sum(train_labels)+sum(unknown_labels)
+    count_of_all_docs = len(train_labels)+len(unknown_labels)
     #calculate rrf @10
     # if training len is 10 % of combined length of training and unknown set
     if len(train_embeddings) >= int(0.1*(len(train_embeddings)+len(unknown_embeddings))) and not reached_10:
@@ -153,14 +154,14 @@ def evaluate_per_iteration(model, review_dataset, device, threshold = 0.5):
     
     if sum(train_labels)>= 0.95 * number_of_relevant_docs and not reached_wss95:
         reached_wss95 = True
-        wss_score = 1 - (len(train_labels)/number_of_relevant_docs)
+        wss_score = 1 - (len(train_labels)/count_of_all_docs)
         logging.info(f"WSS @95: {wss_score}")
         with open("scores.txt", "a") as f:
             f.write(f"WSS@95 = {wss_score}\n")
     
     if sum(train_labels)>= 0.85 * number_of_relevant_docs and not reached_wss85:
         reached_wss85 = True
-        wss_score = 1 - (len(train_labels)/number_of_relevant_docs)
+        wss_score = 1 - (len(train_labels)/count_of_all_docs)
         logging.info(f"WSS @85: {wss_score}")
         with open("scores.txt", "a") as f:
             f.write(f"WSS@85 = {wss_score}\n")
@@ -221,7 +222,7 @@ def main():
     seed = 49681
     set_seed(seed)
     
-    device = set_device()
+    #device = set_device(deviceType)
     
     
     enable_phrase_level = True
@@ -232,15 +233,29 @@ def main():
     
     # Initialize Dataset
     #review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter', create_tensors=True,device=deviceType)
-    for data_path,seed in itertools.product(paths,seeds):
+    combs = [(path,seed) for path,seed in itertools.product(paths,seeds)]
+    for data_path,seed in combs[0:]:
+        #clear the cuda memory on the device between runs
+        gc.collect()
+        torch.cuda.empty_cache() 
+        
+         # --- Reset global flags ---
+        global reached_10, reached_wss95, reached_wss85
+        reached_10 = reached_wss95 = reached_wss85 = False
+        
+        if data_path != paths[0]:
+            enable_phrase_level = False
+            
     
         with open("scores.txt", "a") as f:
             f.write("************************\n")
             f.write(f"Scores for {data_path}\n")
             f.write(f"Seed = {seed}\n")
+            f.write(f"Updated with a 5/5 starter set\n")
+            f.write(f"Phrase level enabled: {enable_phrase_level}\n")
             f.write(f"************************\n")
     
-        review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='tfidf',device=deviceType,shuffle=True,seed=seed)
+        review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter',device=deviceType,shuffle=True,seed=seed)
         
         
         #initialize model
@@ -265,12 +280,12 @@ def main():
             
             # Train the VAE
             logging.info("Training VAE...")
-            train_vae(vae, train_loader, optimizer, epochs=epochs, device=device)
+            train_vae(vae, train_loader, optimizer, epochs=epochs, device=deviceType)
             logging.info("Training complete.")
 
             # Get predictions and rank documents
             unknown_embeddings, unknown_labels = review_dataset.get_unknown_data()
-            ranked_indices, predictions = rank_papers(vae, unknown_embeddings, device)
+            ranked_indices, predictions = rank_papers(vae, unknown_embeddings, deviceType)
             
             #info
             logging.info(f"Highest ranked index: {ranked_indices[0]}")
@@ -280,12 +295,12 @@ def main():
             # Select the highest ranked document
             selected_index = ranked_indices[0]
             
-            if enable_phrase_level and iteration >= 30:
+            if enable_phrase_level:
                 # Get pseudo-negative documents and unknown_indices and run phrase level pipeline
                 threshold_index = int(len(ranked_indices) * 0.7)  #plp needs indices from the worst 30% of unknow_texts as 0 labeled documents (pseudonegative docs)
                 pseudonegative_unknown_indices = ranked_indices[threshold_index:]
                 unknown_indices = review_dataset.unknown_indices
-                plp = PhraseLevelPipeline(unknown_indices, pseudonegative_unknown_indices, phrase_dataset, device)
+                plp = PhraseLevelPipeline(unknown_indices, pseudonegative_unknown_indices, phrase_dataset, deviceType)
                 logging.info("Running phrase level pipeline...")
                 rfc_ranking = plp.pipeline()
                 
@@ -302,13 +317,9 @@ def main():
             review_dataset.update_train_set(selected_index)
 
             # Evaluate (optional, do not use for training)
-            evaluate_per_iteration(vae, review_dataset, device)
+            evaluate_per_iteration(vae, review_dataset, deviceType)
             
             # Calculate WSS and RRF every 20 iterations
-            
-            y_true = np.array([review_dataset.labels[i] for i in ranked_indices])
-            y_pred = (predictions[ranked_indices] >= 0.5).astype(int)  # Convert to binary predictions
-            y_scores = predictions[ranked_indices]
             
             
             

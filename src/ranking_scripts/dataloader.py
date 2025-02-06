@@ -53,9 +53,12 @@ class newReviewDataset(Dataset):
         # Embedding initialization
         self.embeddings = self._initialize_embeddings()
         
+        
+        
+        
 
         # Partition indices
-        self.known_indices, self.unknown_indices = self._get_init_idx(self.labels)
+        self.known_indices, self.unknown_indices = self._get_init_idx()
         #self.known_indices = list(range(initial_train_size))
         #self.unknown_indices = list(range(initial_train_size, len(self.texts)))
         self.labels = np.array(self.labels)
@@ -82,30 +85,16 @@ class newReviewDataset(Dataset):
         labels = data['label'].values
         return texts.tolist(), labels.tolist()
     
-    def _get_init_idx(y):
-        idx_unknown = list(range(len(y)))
-        idx_known = []
-        n_rel = 0
-        n_nrel = 0
-        i = 0
-        idx = 0
-        while n_rel + n_nrel < 10:
+    def _get_init_idx(self):
+        ones = [i for i in range(len(self.labels)) if self.labels[i] == 1][:5]
+        zeros = [i for i in range(len(self.labels)) if self.labels[i] == 0][:5]
 
-            if y[idx] == 1 and n_rel < 5:
-                val = idx_unknown.pop(i)
-                idx_known.append(val)
-                n_rel += 1
-                idx += 1
-            elif y[idx] == 0 and n_nrel < 5:
-                val = idx_unknown.pop(i)
-                idx_known.append(val)
-                n_nrel += 1
-                idx += 1
-            else:
-                i += 1
-                idx += 1
-    
+        idx_known = ones + zeros
+        idx_unknown = [i for i in range(len(self.labels)) if i not in idx_known]
+
         return idx_known, idx_unknown
+        
+        
 
     def _initialize_embeddings(self):
         if self.return_embedding == 'specter':
