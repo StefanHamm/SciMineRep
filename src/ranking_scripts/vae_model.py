@@ -9,17 +9,19 @@ class VAE(nn.Module):
         self.latent_dim = latent_dim
         self.beta = beta
 
-        # Encoder layers
+        # Encoder (2-layer MLP)
         self.fc1 = nn.Linear(input_dim, 256)
-        self.mu = nn.Linear(256, latent_dim)
-        self.logvar = nn.Linear(256, latent_dim)
+        self.fc2 = nn.Linear(256, 128)  # Additional layer
+        self.mu = nn.Linear(128, latent_dim)
+        self.logvar = nn.Linear(128, latent_dim)
 
-        # Decoder layers
-        self.fc2 = nn.Linear(latent_dim, 256)
+        # Decoder (2-layer MLP)
+        self.fc3 = nn.Linear(latent_dim, 128)
+        self.fc4 = nn.Linear(128, 256)  # Additional layer
         self.decoder = nn.Linear(256, input_dim)
-
+        
         # Ranking Layer
-        self.ranking_layer = nn.Linear(latent_dim, 1)
+        self.ranking_layer = nn.Linear(128, 1)  # Use 128, not latent_dim
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
@@ -29,16 +31,17 @@ class VAE(nn.Module):
     def forward(self, x):
         # Encoder
         x_emb = F.relu(self.fc1(x))
+        x_emb = F.relu(self.fc2(x_emb))
         mu = self.mu(x_emb)
         logvar = self.logvar(x_emb)
         z = self.reparameterize(mu, logvar)
 
         # Decoder
-        recon_x_emb = F.relu(self.fc2(z))
+        recon_x_emb = F.relu(self.fc3(z))
+        recon_x_emb = F.relu(self.fc4(recon_x_emb)) 
         recon_x = self.decoder(recon_x_emb)
-
         # Ranking Score
-        ranking_score = torch.sigmoid(self.ranking_layer(z))
+        ranking_score = torch.sigmoid(self.ranking_layer(x_emb))
         return ranking_score, recon_x, mu, logvar
 
     def loss_function(self, ranking_score, recon_x, x, mu, logvar, y_true, beta):

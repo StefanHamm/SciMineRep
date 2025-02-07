@@ -95,3 +95,177 @@ Seed = 49681
 RRF@10 = 0.18181818181818182
 WSS@85 = 0.42152974504249296
 WSS@95 = 0.23852691218130306
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: True
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: True
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: True
+************************
+RRF@10 = 0.4314516129032258
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: True
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: True
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5645161290322581
+WSS@85 = 0.80406852248394
+WSS@95 = 0.5594218415417559
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5564516129032258
+WSS@85 = 0.8008565310492506
+WSS@95 = 0.5990364025695931
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 49681
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 49681
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5604838709677419
+WSS@85 = 0.8099571734475375
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.38
+WSS@85 = 0.6527093596059113
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.36
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5806451612903226
+WSS@85 = 0.8062098501070664
+WSS@95 = 0.5958244111349036
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 999
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5443548387096774
+WSS@85 = 0.80406852248394
+WSS@95 = 0.6370449678800856
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 49681
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 49681
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Bannach-Brown_2019_ids.csv_processed.csv
+Seed = 49681
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.5362903225806451
+WSS@85 = 0.8158458244111348
+WSS@95 = 0.6108137044967881
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+RRF@10 = 0.41
+WSS@85 = 0.6691297208538588
+WSS@95 = 0.28407224958949095
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 999
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
+************************
+Scores for C:\Users\stefa\Desktop\MasterStudium\WISE24I25\188.992 EDDS\Exercise 2\SciMineRep\src\ranking_scripts\./../../data/processed_datasets/Cohen_2006_CalciumChannelBlockers_ids.csv_processed.csv
+Seed = 42
+Updated with a 5/5 starter set
+Phrase level enabled: False
+************************
