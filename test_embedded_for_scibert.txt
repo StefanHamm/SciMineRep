@@ -1,2 +1,0 @@
-<phrase_Q=1.000>calcium channel blockers</phrase>
-    <phrase_Q=1.000>hypertension</phrase>
