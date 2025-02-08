@@ -56,7 +56,7 @@ def evaluate_vae(model, embeddings, device):
      with torch.no_grad():
           x = embeddings.to(device)
           ranking_score, _,_,_ = model(x)
-          predictions = ranking_score.cpu().numpy().flatten()
+          predictions = ranking_score.cpu().detach().numpy().flatten()
      return predictions
      
 
@@ -70,8 +70,10 @@ def calculate_metrics(predictions, labels, threshold=0.5):
     """
     Calculates precision, recall, and f1-score for given predictions and labels.
     """
+    logging.info("Actual labels")
     logging.info(labels)
     predicted_labels = (predictions >= threshold).astype(int) #converting the ranking scores to binary values
+    logging.info("Predicted labels")
     logging.info(predicted_labels)
     true_positives = np.sum((predicted_labels == 1) & (labels == 1))
     false_positives = np.sum((predicted_labels == 1) & (labels == 0))
@@ -228,16 +230,30 @@ def main():
     enable_phrase_level = True
     latent_dim = 128
     initial_train_size = 1
-    batch_size = 64
+    batch_size = 40
     epochs = 200
     
     # Initialize Dataset
     #review_dataset = newReviewDataset(data_path, initial_train_size=initial_train_size, return_embedding='specter', create_tensors=True,device=deviceType)
     combs = [(path,seed) for path,seed in itertools.product(paths,seeds)]
     for data_path,seed in combs[0:]:
+        # if the dataloader , dateset already exists, clear the memory
+        if 'review_dataset' in locals():
+            del review_dataset
+            gc.collect()
+            torch.cuda.empty_cache()
+        if "vae" in locals():
+            del vae
+            gc.collect()
+            torch.cuda.empty_cache()
+        
         #clear the cuda memory on the device between runs
+        logging.info(f"Toch memory allocated: {torch.cuda.memory_allocated(deviceType)/1e6} MB")
+        logging.info(f"Toch memory cached: {torch.cuda.memory_reserved(deviceType)/1e6} MB")
         gc.collect()
         torch.cuda.empty_cache() 
+        logging.info(f"Toch memory allocated: {torch.cuda.memory_allocated(deviceType)/1e6} MB")
+        logging.info(f"Toch memory cached: {torch.cuda.memory_reserved(deviceType)/1e6} MB")
         
          # --- Reset global flags ---
         global reached_10, reached_wss95, reached_wss85
