@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
@@ -51,64 +52,77 @@ def get_init_idx(y):
 
 def main(file_paths):
     print(f"Running Baseline 'TFIDF + NB'\n\n")
+    seeds =[42,999,49681]
     with open("scores_baseline.txt", "a") as f:
         f.write(f"Running Baseline 'TFIDF + NB'\n\n")
     for file in file_paths:
         print(f"Evaluation for {file}:\n")
         with open("scores_baseline.txt", "a") as f:
             f.write(f"Evaluation for {file}:\n")
-        rrf10 = False
-        wss85 = False
-        wss95 = False
-        X, y = load_data(file)
-        idx_known, idx_unknown = get_init_idx(y)
-        X_known = X[idx_known]
-        y_known = y[idx_known]
-        X_unknown = X[idx_unknown]
-        y_unknown = y[idx_unknown]
 
-        while len(y_unknown) > 0 and not wss95:
-            if len(y_known) >= 0.1*len(y) and not rrf10:
+        X_pre, y_pre = load_data(file)
 
-                rrf_score = sum(y_known)/sum(y)
-                rrf10 = True
-
-                logging.info(f"RRF @10: {rrf_score}")
-                print(f"RRF@10 = {rrf_score}\n")
-                #write the score to a file
-                with open("scores_baseline.txt", "a") as f:
-                    f.write(f"RRF@10 = {rrf_score}\n")
+        for seed in seeds:
+            print(f"With seed {seed}")
+            with open("scores_baseline.txt", "a") as f:
+                f.write(f"With seed {seed}\n")
+            rrf10 = False
+            wss85 = False
+            wss95 = False
             
-            if sum(y_known) > 0.85 * sum(y) and not wss85:
-                wss85_score = 1 - (len(y_known)/len(y))
-                wss85 = True
 
-                logging.info(f"WSS @85: {wss85_score}")
-                print(f"WSS@85 = {wss85_score}\n")
-                with open("scores_baseline.txt", "a") as f:
-                    f.write(f"WSS@85 = {wss85_score}\n")
-
-            if sum(y_known) > 0.95 * sum(y) and not wss95:
-                wss95_score = 1 - (len(y_known)/len(y))
-                wss95 = True
-
-                logging.info(f"WSS @95: {wss95_score}")
-                print((f"WSS@95 = {wss95_score}\n"))
-                with open("scores_baseline.txt", "a") as f:
-                    f.write(f"WSS@95 = {wss95_score}\n\n")
-            
-            if rrf10 == wss85 == wss95 == True:
-                break
-
-            mod = build_and_train_model(X_known, y_known)
-            probability = pd.DataFrame(mod.predict_proba(X_unknown)).iloc[:,1]
-            max_idx = probability.argmax()
-            new_idx = idx_unknown.pop(max_idx)
-            idx_known.append(new_idx)
+            np.random.seed(seed)
+            shuffle_indices = np.random.permutation(len(y_pre))
+            X = pd.Series([X_pre[i] for i in shuffle_indices])
+            y = pd.Series([y_pre[i] for i in shuffle_indices])
+            idx_known, idx_unknown = get_init_idx(y)
             X_known = X[idx_known]
             y_known = y[idx_known]
             X_unknown = X[idx_unknown]
             y_unknown = y[idx_unknown]
+
+            while len(y_unknown) > 0 and not wss95:
+                if len(y_known) >= 0.1*len(y) and not rrf10:
+
+                    rrf_score = sum(y_known)/sum(y)
+                    rrf10 = True
+
+                    logging.info(f"RRF @10: {rrf_score}")
+                    print(f"RRF@10 = {rrf_score}\n")
+                    #write the score to a file
+                    with open("scores_baseline.txt", "a") as f:
+                        f.write(f"RRF@10 = {rrf_score}\n")
+                
+                if sum(y_known) > 0.85 * sum(y) and not wss85:
+                    wss85_score = 1 - (len(y_known)/len(y))
+                    wss85 = True
+
+                    logging.info(f"WSS @85: {wss85_score}")
+                    print(f"WSS@85 = {wss85_score}\n")
+                    with open("scores_baseline.txt", "a") as f:
+                        f.write(f"WSS@85 = {wss85_score}\n")
+
+                if sum(y_known) > 0.95 * sum(y) and not wss95:
+                    wss95_score = 1 - (len(y_known)/len(y))
+                    wss95 = True
+
+                    logging.info(f"WSS @95: {wss95_score}")
+                    print((f"WSS@95 = {wss95_score}\n"))
+                    with open("scores_baseline.txt", "a") as f:
+                        f.write(f"WSS@95 = {wss95_score}\n\n")
+                
+                if rrf10 == wss85 == wss95 == True:
+                    break
+
+                mod = build_and_train_model(X_known, y_known)
+                probability = pd.DataFrame(mod.predict_proba(X_unknown)).iloc[:,1]
+                max_idx = probability.argmax()
+                new_idx = idx_unknown.pop(max_idx)
+                idx_known.append(new_idx)
+                X_known = X[idx_known]
+                y_known = y[idx_known]
+                X_unknown = X[idx_unknown]
+                y_unknown = y[idx_unknown]
 
 if __name__ == "__main__":
     cwd = os.path.dirname(os.path.realpath(__file__))
