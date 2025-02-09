@@ -89,7 +89,7 @@ class PhraselevelDataloader(Dataset):
         model = AutoModel.from_pretrained('allenai/scibert_scivocab_uncased')
         model.to(self.device)
 
-        # Load AutoPhrase results
+        # Load AutoPhrase results - https://github.com/marcellszekrenyes/AutoPhrase
         processed_datasets_path = os.path.join(dir_path, "..", "..", "data", "processed_datasets")
         autophrase_file = os.path.join(processed_datasets_path, "example_data_embedded_for_scibert.txt")
         unique_phrases = self._read_autophrase_output_for_scibert(autophrase_file)
